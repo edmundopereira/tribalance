@@ -1,0 +1,245 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - TriBalance{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h1 class="mb-4">
+            <i class="fas fa-chart-line"></i> Dashboard Financeiro
+        </h1>
+    </div>
+</div>
+
+<!-- Filtros -->
+<div class="filter-section">
+    <form method="get" class="row g-3">
+        <div class="col-md-6">
+            <label for="periodo" class="form-label">Período</label>
+            <select name="periodo" id="periodo" class="form-select">
+                <option value="mes" {% if periodo == 'mes' %}selected{% endif %}>Mês Atual</option>
+                <option value="trimestre" {% if periodo == 'trimestre' %}selected{% endif %}>Trimestre Atual</option>
+                <option value="ano" {% if periodo == 'ano' %}selected{% endif %}>Ano Atual</option>
+            </select>
+        </div>
+        <div class="col-md-6">
+            <label for="conta" class="form-label">Conta</label>
+            <select name="conta" id="conta" class="form-select">
+                <option value="">Todas as contas</option>
+                {% for c in contas %}
+                <option value="{{ c }}" {% if conta == c %}selected{% endif %}>{{ c }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-12">
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-filter"></i> Filtrar
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- KPIs -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="kpi-card positive">
+            <div class="kpi-label">Receita Total</div>
+            <div class="kpi-value">R$ {{ kpis.receita_total|floatformat:2 }}</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="kpi-card negative">
+            <div class="kpi-label">Despesa Total</div>
+            <div class="kpi-value">R$ {{ kpis.despesa_total|floatformat:2 }}</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="kpi-card {% if kpis.saldo >= 0 %}positive{% else %}negative{% endif %}">
+            <div class="kpi-label">Saldo</div>
+            <div class="kpi-value">R$ {{ kpis.saldo|floatformat:2 }}</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="kpi-card">
+            <div class="kpi-label">Índice de Equilíbrio</div>
+            <div class="kpi-value">{{ kpis.fbi|floatformat:2 }}</div>
+        </div>
+    </div>
+</div>
+
+<!-- Métricas Adicionais -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="kpi-card">
+            <div class="kpi-label">Taxa de Acúmulo (MWR)</div>
+            <div class="kpi-value">{{ kpis.mwr|floatformat:2 }}%</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="kpi-card">
+            <div class="kpi-label">Eficiência de Consumo (CER)</div>
+            <div class="kpi-value">{{ kpis.cer|floatformat:2 }}%</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="kpi-card">
+            <div class="kpi-label">Reserva de Segurança (SBI)</div>
+            <div class="kpi-value">{{ kpis.sbi|floatformat:2 }}</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="kpi-card">
+            <div class="kpi-label">Progresso Liberdade (FPS)</div>
+            <div class="kpi-value">{{ kpis.fps|floatformat:2 }}%</div>
+        </div>
+    </div>
+</div>
+
+<!-- Gráficos -->
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <i class="fas fa-chart-line"></i> Fluxo de Caixa Diário
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="fluxoCaixaChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <i class="fas fa-pie-chart"></i> Distribuição por Pilares
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="distribuicaoPilaresChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Ações Rápidas -->
+<div class="row mt-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <i class="fas fa-bolt"></i> Ações Rápidas
+            </div>
+            <div class="card-body">
+                <a href="{% url 'financeiro:importacao' %}" class="btn btn-primary">
+                    <i class="fas fa-upload"></i> Importar Extrato
+                </a>
+                <a href="{% url 'financeiro:lista_lancamentos' %}" class="btn btn-info">
+                    <i class="fas fa-list"></i> Ver Lançamentos
+                </a>
+                <a href="{% url 'financeiro:planejamento' %}" class="btn btn-success">
+                    <i class="fas fa-target"></i> Planejamento
+                </a>
+                <a href="{% url 'financeiro:projecao' %}" class="btn btn-warning">
+                    <i class="fas fa-chart-area"></i> Projeção
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Dados do fluxo de caixa
+    const fluxoCaixaData = {{ fluxo_caixa_json|safe }};
+    
+    // Gráfico de Fluxo de Caixa
+    const fluxoCaixaCtx = document.getElementById('fluxoCaixaChart').getContext('2d');
+    new Chart(fluxoCaixaCtx, {
+        type: 'line',
+        data: {
+            labels: fluxoCaixaData.labels,
+            datasets: [{
+                label: 'Saldo Diário',
+                data: fluxoCaixaData.data,
+                borderColor: '#366092',
+                backgroundColor: 'rgba(54, 96, 146, 0.1)',
+                borderWidth: 2,
+                fill: true,
+                tension: 0.4,
+                pointRadius: 4,
+                pointBackgroundColor: '#366092',
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2,
+                pointHoverRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top'
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return 'R$ ' + value.toLocaleString('pt-BR');
+                        }
+                    }
+                }
+            }
+        }
+    });
+    
+    // Dados de distribuição por pilares
+    const distribuicaoPilaresData = {{ distribuicao_pilares_json|safe }};
+    
+    // Gráfico de Distribuição por Pilares
+    const distribuicaoPilaresCtx = document.getElementById('distribuicaoPilaresChart').getContext('2d');
+    new Chart(distribuicaoPilaresCtx, {
+        type: 'doughnut',
+        data: {
+            labels: distribuicaoPilaresData.labels,
+            datasets: [{
+                data: distribuicaoPilaresData.data,
+                backgroundColor: [
+                    '#ffc107',  // Necessidade
+                    '#17a2b8',  // Conforto
+                    '#28a745'   // Crescimento
+                ],
+                borderColor: '#fff',
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'bottom'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return 'R$ ' + context.parsed.toLocaleString('pt-BR', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    });
+</script>
+{% endblock %}
+

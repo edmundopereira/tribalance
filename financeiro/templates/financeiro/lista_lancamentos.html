@@ -1,0 +1,245 @@
+{% extends 'base.html' %}
+
+{% block title %}Lançamentos - TriBalance{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h1 class="mb-4">
+            <i class="fas fa-list"></i> Relatório de Lançamentos
+        </h1>
+    </div>
+</div>
+
+<!-- Filtros -->
+<div class="filter-section">
+    <form method="get" class="row g-3">
+        <div class="col-md-6">
+            <label for="busca" class="form-label">Buscar Descrição</label>
+            <input type="text" name="busca" id="busca" class="form-control" 
+                   placeholder="Digite a descrição..." value="{{ filtros_aplicados.busca }}">
+        </div>
+        
+        <div class="col-md-6">
+            <label for="data_inicio" class="form-label">Data Inicial</label>
+            <input type="date" name="data_inicio" id="data_inicio" class="form-control" 
+                   value="{{ filtros_aplicados.data_inicio }}">
+        </div>
+        
+        <div class="col-md-6">
+            <label for="data_fim" class="form-label">Data Final</label>
+            <input type="date" name="data_fim" id="data_fim" class="form-control" 
+                   value="{{ filtros_aplicados.data_fim }}">
+        </div>
+        
+        <div class="col-md-6">
+            <label for="mes" class="form-label">Mês</label>
+            <select name="mes" id="mes" class="form-select">
+                <option value="">Todos os meses</option>
+                {% for valor, label in meses %}
+                <option value="{{ valor }}" {% if filtros_aplicados.mes == valor %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <div class="col-md-6">
+            <label for="tipo" class="form-label">Tipo</label>
+            <select name="tipo" id="tipo" class="form-select">
+                <option value="">Todos os tipos</option>
+                {% for valor, label in tipos %}
+                <option value="{{ valor }}" {% if filtros_aplicados.tipo == valor %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <div class="col-md-6">
+            <label for="categoria" class="form-label">Categoria</label>
+            <select name="categoria" id="categoria" class="form-select">
+                <option value="">Todas as categorias</option>
+                {% for cat in categorias %}
+                <option value="{{ cat }}" {% if filtros_aplicados.categoria == cat %}selected{% endif %}>{{ cat }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <div class="col-md-6">
+            <label for="pilar" class="form-label">Pilar TriBalance</label>
+            <select name="pilar" id="pilar" class="form-select">
+                <option value="">Todos os pilares</option>
+                {% for valor, label in pilares %}
+                <option value="{{ valor }}" {% if filtros_aplicados.pilar == valor %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <div class="col-md-6">
+            <label for="fonte" class="form-label">Fonte (Conta)</label>
+            <select name="fonte" id="fonte" class="form-select">
+                <option value="">Todas as fontes</option>
+                {% for f in fontes %}
+                <option value="{{ f }}" {% if filtros_aplicados.fonte == f %}selected{% endif %}>{{ f }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <div class="col-md-6">
+            <label for="conta_final" class="form-label">Conta Final</label>
+            <select name="conta_final" id="conta_final" class="form-select">
+                <option value="">Todas as contas</option>
+                {% for c in contas_finais %}
+                <option value="{{ c }}" {% if filtros_aplicados.conta_final == c %}selected{% endif %}>{{ c }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <div class="col-12">
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-filter"></i> Aplicar Filtros
+            </button>
+            <a href="{% url 'financeiro:lista_lancamentos' %}" class="btn btn-secondary">
+                <i class="fas fa-redo"></i> Limpar Filtros
+            </a>
+            <button type="submit" name="export" value="csv" class="btn btn-success">
+                <i class="fas fa-download"></i> Exportar CSV
+            </button>
+            <button type="submit" name="export" value="excel" class="btn btn-success">
+                <i class="fas fa-file-excel"></i> Exportar Excel
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- Resumo dos Resultados -->
+<div class="summary-box">
+    <div class="summary-item">
+        <div class="summary-label">Total de Registros</div>
+        <div class="summary-value">{{ total_registros }}</div>
+    </div>
+    <div class="summary-item">
+        <div class="summary-label">Soma dos Valores</div>
+        <div class="summary-value">R$ {{ soma_valores|floatformat:2 }}</div>
+    </div>
+</div>
+
+<!-- Tabela de Lançamentos -->
+<div class="card">
+    <div class="card-header">
+        <i class="fas fa-table"></i> Lançamentos (Página {{ page_obj.number }} de {{ paginator.num_pages }})
+    </div>
+    <div class="card-body">
+        {% if page_obj %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>
+                            <a href="?{% if ordem == 'data' %}-{% endif %}ordem=data{% for key, value in filtros_aplicados.items %}&{{ key }}={{ value }}{% endfor %}">
+                                Data {% if ordem == 'data' %}<i class="fas fa-arrow-up"></i>{% elif ordem == '-data' %}<i class="fas fa-arrow-down"></i>{% endif %}
+                            </a>
+                        </th>
+                        <th>Mês</th>
+                        <th>Descrição</th>
+                        <th>Categoria</th>
+                        <th>Tipo</th>
+                        <th>Valor</th>
+                        <th>Fonte</th>
+                        <th>Conta Final</th>
+                        <th>Pilar</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for lancamento in page_obj %}
+                    <tr>
+                        <td>{{ lancamento.data|date:"d/m/Y" }}</td>
+                        <td>{{ lancamento.mes }}</td>
+                        <td>{{ lancamento.lancamento }}</td>
+                        <td>{{ lancamento.categoria }}</td>
+                        <td>
+                            {% if lancamento.tipo == 'RECEITA' or lancamento.tipo == 'CRÉDITO' %}
+                                <span class="badge bg-success">{{ lancamento.tipo }}</span>
+                            {% else %}
+                                <span class="badge bg-danger">{{ lancamento.tipo }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="{% if lancamento.valor > 0 %}text-success{% else %}text-danger{% endif %}">
+                            R$ {{ lancamento.valor|floatformat:2 }}
+                        </td>
+                        <td>{{ lancamento.fonte }}</td>
+                        <td>{{ lancamento.conta_final }}</td>
+                        <td>
+                            {% if lancamento.pilar_tribalance == 'NECESSIDADE' %}
+                                <span class="badge badge-pilar badge-necessidade">Necessidade</span>
+                            {% elif lancamento.pilar_tribalance == 'CONFORTO & EXPERIÊNCIA' %}
+                                <span class="badge badge-pilar badge-conforto">Conforto</span>
+                            {% else %}
+                                <span class="badge badge-pilar badge-crescimento">Crescimento</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="9" class="text-center text-muted py-4">
+                            <i class="fas fa-inbox"></i> Nenhum lançamento encontrado
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Paginação -->
+        {% if paginator.num_pages > 1 %}
+        <nav aria-label="Paginação">
+            <ul class="pagination justify-content-center">
+                {% if page_obj.has_previous %}
+                <li class="page-item">
+                    <a class="page-link" href="?page=1{% for key, value in filtros_aplicados.items %}&{{ key }}={{ value }}{% endfor %}">
+                        <i class="fas fa-chevron-left"></i> Primeira
+                    </a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% for key, value in filtros_aplicados.items %}&{{ key }}={{ value }}{% endfor %}">
+                        Anterior
+                    </a>
+                </li>
+                {% endif %}
+                
+                {% for num in paginator.page_range %}
+                    {% if page_obj.number == num %}
+                    <li class="page-item active">
+                        <span class="page-link">{{ num }}</span>
+                    </li>
+                    {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ num }}{% for key, value in filtros_aplicados.items %}&{{ key }}={{ value }}{% endfor %}">{{ num }}</a>
+                    </li>
+                    {% endif %}
+                {% endfor %}
+                
+                {% if page_obj.has_next %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.next_page_number }}{% for key, value in filtros_aplicados.items %}&{{ key }}={{ value }}{% endfor %}">
+                        Próxima
+                    </a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ paginator.num_pages }}{% for key, value in filtros_aplicados.items %}&{{ key }}={{ value }}{% endfor %}">
+                        Última <i class="fas fa-chevron-right"></i>
+                    </a>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+        {% endif %}
+        
+        {% else %}
+        <div class="alert alert-info">
+            <i class="fas fa-info-circle"></i> Nenhum lançamento registrado. 
+            <a href="{% url 'financeiro:importacao' %}">Importe um extrato para começar.</a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}
+

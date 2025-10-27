@@ -1,0 +1,228 @@
+{% extends 'base.html' %}
+
+{% block title %}Relatório - TriBalance{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h1 class="mb-4">
+            <i class="fas fa-file-alt"></i> Relatório e Parecer Financeiro
+        </h1>
+    </div>
+</div>
+
+<!-- Filtro de Período -->
+<div class="filter-section">
+    <form method="get" class="row g-3">
+        <div class="col-md-6">
+            <label for="periodo" class="form-label">Período</label>
+            <select name="periodo" id="periodo" class="form-select">
+                <option value="mes" {% if periodo == 'mes' %}selected{% endif %}>Mês Atual</option>
+                <option value="trimestre" {% if periodo == 'trimestre' %}selected{% endif %}>Trimestre Atual</option>
+                <option value="ano" {% if periodo == 'ano' %}selected{% endif %}>Ano Atual</option>
+            </select>
+        </div>
+        <div class="col-md-6">
+            <button type="submit" class="btn btn-primary mt-4">
+                <i class="fas fa-filter"></i> Gerar Relatório
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- Resumo do Período -->
+<div class="card mb-4">
+    <div class="card-header">
+        <i class="fas fa-calendar"></i> Período Analisado
+    </div>
+    <div class="card-body">
+        <p><strong>De:</strong> {{ data_inicio|date:"d/m/Y" }} <strong>Até:</strong> {{ data_fim|date:"d/m/Y" }}</p>
+    </div>
+</div>
+
+<!-- KPIs do Período -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="kpi-card positive">
+            <div class="kpi-label">Receita Total</div>
+            <div class="kpi-value">R$ {{ kpis.receita_total|floatformat:2 }}</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="kpi-card negative">
+            <div class="kpi-label">Despesa Total</div>
+            <div class="kpi-value">R$ {{ kpis.despesa_total|floatformat:2 }}</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="kpi-card {% if kpis.saldo >= 0 %}positive{% else %}negative{% endif %}">
+            <div class="kpi-label">Saldo</div>
+            <div class="kpi-value">R$ {{ kpis.saldo|floatformat:2 }}</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="kpi-card">
+            <div class="kpi-label">Índice de Equilíbrio</div>
+            <div class="kpi-value">{{ kpis.fbi|floatformat:2 }}</div>
+        </div>
+    </div>
+</div>
+
+<!-- Análise por Pilar -->
+<div class="card mb-4">
+    <div class="card-header">
+        <i class="fas fa-chart-pie"></i> Distribuição por Pilares
+    </div>
+    <div class="card-body">
+        <div class="row">
+            {% for pilar, dados in analise_pilares.items %}
+            <div class="col-md-4 mb-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h5>
+                            {% if pilar == 'NECESSIDADE' %}
+                                <i class="fas fa-home"></i> Necessidade
+                            {% elif pilar == 'CONFORTO & EXPERIÊNCIA' %}
+                                <i class="fas fa-smile"></i> Conforto & Experiência
+                            {% else %}
+                                <i class="fas fa-chart-line"></i> Crescimento & Liberdade
+                            {% endif %}
+                        </h5>
+                        <p class="h4">R$ {{ dados.total|floatformat:2 }}</p>
+                        <p class="text-muted">{{ dados.percentual|floatformat:2 }}% do total</p>
+                        <div class="progress">
+                            <div class="progress-bar" role="progressbar" 
+                                 style="width: {{ dados.percentual }}%"
+                                 aria-valuenow="{{ dados.percentual }}" 
+                                 aria-valuemin="0" aria-valuemax="100">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Parecer Financeiro -->
+<div class="card mb-4">
+    <div class="card-header">
+        <i class="fas fa-comments"></i> Parecer Financeiro
+    </div>
+    <div class="card-body">
+        <div class="alert alert-info">
+            <i class="fas fa-lightbulb"></i> 
+            <strong>Análise Automática:</strong> Este parecer foi gerado automaticamente 
+            com base nos seus dados financeiros do período.
+        </div>
+        
+        {% if parecer.pontos_fortes %}
+        <h5 class="mt-4">
+            <i class="fas fa-check-circle text-success"></i> Pontos Fortes
+        </h5>
+        <ul class="list-group list-group-flush">
+            {% for ponto in parecer.pontos_fortes %}
+            <li class="list-group-item">
+                <i class="fas fa-check text-success"></i> {{ ponto }}
+            </li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+        
+        {% if parecer.pontos_atencao %}
+        <h5 class="mt-4">
+            <i class="fas fa-exclamation-circle text-warning"></i> Pontos de Atenção
+        </h5>
+        <ul class="list-group list-group-flush">
+            {% for ponto in parecer.pontos_atencao %}
+            <li class="list-group-item">
+                <i class="fas fa-exclamation text-warning"></i> {{ ponto }}
+            </li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+        
+        {% if parecer.recomendacoes %}
+        <h5 class="mt-4">
+            <i class="fas fa-lightbulb text-info"></i> Recomendações
+        </h5>
+        <ul class="list-group list-group-flush">
+            {% for recomendacao in parecer.recomendacoes %}
+            <li class="list-group-item">
+                <i class="fas fa-arrow-right text-info"></i> {{ recomendacao }}
+            </li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Métricas Detalhadas -->
+<div class="card mb-4">
+    <div class="card-header">
+        <i class="fas fa-chart-bar"></i> Métricas Detalhadas
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <table class="table table-sm">
+                    <tbody>
+                        <tr>
+                            <td><strong>Taxa de Acúmulo (MWR):</strong></td>
+                            <td>{{ kpis.mwr|floatformat:2 }}%</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Eficiência de Consumo (CER):</strong></td>
+                            <td>{{ kpis.cer|floatformat:2 }}%</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Reserva de Segurança (SBI):</strong></td>
+                            <td>{{ kpis.sbi|floatformat:2 }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="col-md-6">
+                <table class="table table-sm">
+                    <tbody>
+                        <tr>
+                            <td><strong>Progresso Liberdade (FPS):</strong></td>
+                            <td>{{ kpis.fps|floatformat:2 }}%</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Índice de Equilíbrio (FBI):</strong></td>
+                            <td>{{ kpis.fbi|floatformat:2 }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Ações Recomendadas -->
+<div class="card">
+    <div class="card-header">
+        <i class="fas fa-tasks"></i> Próximos Passos
+    </div>
+    <div class="card-body">
+        <div class="list-group">
+            <a href="{% url 'financeiro:lista_lancamentos' %}" class="list-group-item list-group-item-action">
+                <i class="fas fa-list"></i> Revisar Lançamentos Detalhados
+            </a>
+            <a href="{% url 'financeiro:planejamento' %}" class="list-group-item list-group-item-action">
+                <i class="fas fa-target"></i> Ajustar Planejamento Orçamentário
+            </a>
+            <a href="{% url 'financeiro:projecao' %}" class="list-group-item list-group-item-action">
+                <i class="fas fa-chart-area"></i> Simular Projeções Futuras
+            </a>
+            <a href="{% url 'financeiro:importacao' %}" class="list-group-item list-group-item-action">
+                <i class="fas fa-upload"></i> Importar Novo Extrato
+            </a>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+

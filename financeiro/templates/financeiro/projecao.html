@@ -1,0 +1,233 @@
+{% extends 'base.html' %}
+
+{% block title %}Projeção - TriBalance{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h1 class="mb-4">
+            <i class="fas fa-chart-area"></i> Projeção Financeira
+        </h1>
+    </div>
+</div>
+
+<!-- Parâmetros de Simulação -->
+<div class="card mb-4">
+    <div class="card-header">
+        <i class="fas fa-sliders-h"></i> Parâmetros de Simulação
+    </div>
+    <div class="card-body">
+        <form method="get" class="row g-3">
+            <div class="col-md-4">
+                <label for="horizonte" class="form-label">Horizonte de Tempo</label>
+                <select name="horizonte" id="horizonte" class="form-select">
+                    <option value="curto" {% if horizonte == 'curto' %}selected{% endif %}>Curto Prazo (0-1 ano)</option>
+                    <option value="medio" {% if horizonte == 'medio' %}selected{% endif %}>Médio Prazo (1-5 anos)</option>
+                    <option value="longo" {% if horizonte == 'longo' %}selected{% endif %}>Longo Prazo (5-11 anos)</option>
+                </select>
+            </div>
+            
+            <div class="col-md-4">
+                <label for="aporte_mensal" class="form-label">Aporte Mensal (R$)</label>
+                <input type="number" name="aporte_mensal" id="aporte_mensal" 
+                       class="form-control" value="{{ aporte_mensal }}" 
+                       step="100" min="0">
+            </div>
+            
+            <div class="col-md-4">
+                <label for="taxa_retorno" class="form-label">Taxa de Retorno Anual (%)</label>
+                <input type="number" name="taxa_retorno" id="taxa_retorno" 
+                       class="form-control" value="{{ taxa_retorno }}" 
+                       step="0.1" min="0" max="100">
+            </div>
+            
+            <div class="col-12">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-calculator"></i> Simular
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Resultado da Projeção -->
+<div class="card mb-4">
+    <div class="card-header">
+        <i class="fas fa-chart-line"></i> Evolução do Patrimônio
+    </div>
+    <div class="card-body">
+        <div class="chart-container" style="height: 400px;">
+            <canvas id="projecaoChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Resumo da Projeção -->
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <i class="fas fa-info-circle"></i> Parâmetros Utilizados
+            </div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <tbody>
+                        <tr>
+                            <td><strong>Horizonte:</strong></td>
+                            <td>
+                                {% if horizonte == 'curto' %}
+                                    Curto Prazo (12 meses)
+                                {% elif horizonte == 'medio' %}
+                                    Médio Prazo (60 meses)
+                                {% else %}
+                                    Longo Prazo (132 meses / 11 anos)
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>Aporte Mensal:</strong></td>
+                            <td>R$ {{ aporte_mensal|floatformat:2 }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Taxa de Retorno:</strong></td>
+                            <td>{{ taxa_retorno|floatformat:2 }}% a.a.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <i class="fas fa-chart-pie"></i> Resultado Final
+            </div>
+            <div class="card-body">
+                <div class="kpi-card positive">
+                    <div class="kpi-label">Patrimônio Projetado</div>
+                    <div class="kpi-value">R$ {{ patrimonio_final|floatformat:2 }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Cenários Comparativos -->
+<div class="card mt-4">
+    <div class="card-header">
+        <i class="fas fa-balance-scale"></i> Comparação de Cenários
+    </div>
+    <div class="card-body">
+        <div class="alert alert-info">
+            <i class="fas fa-info-circle"></i> 
+            Simule diferentes cenários para entender como mudanças no aporte mensal 
+            e na taxa de retorno afetam seu patrimônio.
+        </div>
+        
+        <div class="row mt-3">
+            <div class="col-md-4">
+                <h5>Cenário Conservador</h5>
+                <p><strong>Taxa:</strong> 5% a.a.</p>
+                <p><strong>Aporte:</strong> R$ 500/mês</p>
+                <a href="?horizonte={{ horizonte }}&aporte_mensal=500&taxa_retorno=5" 
+                   class="btn btn-sm btn-outline-primary">Simular</a>
+            </div>
+            
+            <div class="col-md-4">
+                <h5>Cenário Neutro</h5>
+                <p><strong>Taxa:</strong> 8% a.a.</p>
+                <p><strong>Aporte:</strong> R$ 1000/mês</p>
+                <a href="?horizonte={{ horizonte }}&aporte_mensal=1000&taxa_retorno=8" 
+                   class="btn btn-sm btn-outline-primary">Simular</a>
+            </div>
+            
+            <div class="col-md-4">
+                <h5>Cenário Otimista</h5>
+                <p><strong>Taxa:</strong> 12% a.a.</p>
+                <p><strong>Aporte:</strong> R$ 1500/mês</p>
+                <a href="?horizonte={{ horizonte }}&aporte_mensal=1500&taxa_retorno=12" 
+                   class="btn btn-sm btn-outline-primary">Simular</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Informações Adicionais -->
+<div class="card mt-4">
+    <div class="card-header">
+        <i class="fas fa-graduation-cap"></i> Informações Importantes
+    </div>
+    <div class="card-body">
+        <h5>Sobre as Projeções</h5>
+        <ul>
+            <li><strong>Aporte Mensal:</strong> Valor que você investe todo mês</li>
+            <li><strong>Taxa de Retorno:</strong> Retorno anual esperado do investimento</li>
+            <li><strong>Composição:</strong> Os juros são reinvestidos (juros compostos)</li>
+        </ul>
+        
+        <h5 class="mt-3">Dicas para Melhorar a Projeção</h5>
+        <ul>
+            <li>Aumentar o aporte mensal acelera o crescimento do patrimônio</li>
+            <li>Buscar investimentos com melhor retorno (sem aumentar risco excessivamente)</li>
+            <li>Manter consistência nos aportes mensais</li>
+            <li>Revisar a projeção periodicamente e ajustar parâmetros conforme necessário</li>
+        </ul>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Dados da projeção
+    const projecaoData = {{ projecao_json|safe }};
+    
+    // Gráfico de Projeção
+    const projecaoCtx = document.getElementById('projecaoChart').getContext('2d');
+    new Chart(projecaoCtx, {
+        type: 'line',
+        data: {
+            labels: projecaoData.map(d => 'Mês ' + d.mes),
+            datasets: [{
+                label: 'Patrimônio Projetado',
+                data: projecaoData.map(d => d.patrimonio),
+                borderColor: '#28a745',
+                backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                borderWidth: 3,
+                fill: true,
+                tension: 0.4,
+                pointRadius: 0,
+                pointHoverRadius: 8,
+                pointBackgroundColor: '#28a745',
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top'
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return 'R$ ' + value.toLocaleString('pt-BR', {
+                                minimumFractionDigits: 0,
+                                maximumFractionDigits: 0
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    });
+</script>
+{% endblock %}
+

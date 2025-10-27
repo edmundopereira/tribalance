@@ -1,0 +1,212 @@
+{% extends 'base.html' %}
+
+{% block title %}Importar Extrato - TriBalance{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h1 class="mb-4">
+            <i class="fas fa-upload"></i> Importar Extrato Bancário
+        </h1>
+    </div>
+</div>
+
+<!-- Instruções -->
+<div class="card mb-4">
+    <div class="card-header">
+        <i class="fas fa-info-circle"></i> Instruções de Importação
+    </div>
+    <div class="card-body">
+        <h5>Formato do Arquivo</h5>
+        <p>O arquivo deve ser em formato <strong>Excel (.xlsx, .xls)</strong> ou <strong>CSV</strong> e conter as seguintes colunas:</p>
+        
+        <table class="table table-sm">
+            <thead>
+                <tr>
+                    <th>Coluna</th>
+                    <th>Descrição</th>
+                    <th>Exemplo</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>data</strong></td>
+                    <td>Data da transação (YYYY-MM-DD)</td>
+                    <td>2025-10-15</td>
+                </tr>
+                <tr>
+                    <td><strong>lancamento</strong></td>
+                    <td>Descrição da transação</td>
+                    <td>Compra no Supermercado</td>
+                </tr>
+                <tr>
+                    <td><strong>categoria</strong></td>
+                    <td>Categoria da transação</td>
+                    <td>Alimentação</td>
+                </tr>
+                <tr>
+                    <td><strong>tipo</strong></td>
+                    <td>Tipo (RECEITA, DESPESA, CRÉDITO, DÉBITO)</td>
+                    <td>DESPESA</td>
+                </tr>
+                <tr>
+                    <td><strong>valor</strong></td>
+                    <td>Valor da transação</td>
+                    <td>150.50</td>
+                </tr>
+                <tr>
+                    <td><strong>fonte</strong></td>
+                    <td>Conta de origem</td>
+                    <td>Santander</td>
+                </tr>
+                <tr>
+                    <td><strong>conta_final</strong></td>
+                    <td>Conta de destino</td>
+                    <td>Carteira</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <div class="alert alert-warning mt-3">
+            <i class="fas fa-exclamation-triangle"></i> 
+            <strong>Importante:</strong> Transações duplicadas (mesma data, descrição, valor e conta) serão ignoradas automaticamente.
+        </div>
+    </div>
+</div>
+
+<!-- Formulário de Upload -->
+<div class="card mb-4">
+    <div class="card-header">
+        <i class="fas fa-file-upload"></i> Selecionar Arquivo
+    </div>
+    <div class="card-body">
+        <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            
+            <div class="mb-3">
+                <label for="arquivo" class="form-label">Escolha o arquivo</label>
+                <input type="file" name="arquivo" id="arquivo" class="form-control" 
+                       accept=".csv,.xlsx,.xls" required>
+                <small class="form-text text-muted">Formatos aceitos: CSV, XLSX, XLS</small>
+            </div>
+            
+            <button type="submit" class="btn btn-primary btn-lg">
+                <i class="fas fa-upload"></i> Importar Arquivo
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Histórico de Importações -->
+{% if logs_recentes %}
+<div class="card">
+    <div class="card-header">
+        <i class="fas fa-history"></i> Histórico de Importações
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Arquivo</th>
+                        <th>Status</th>
+                        <th>Importados</th>
+                        <th>Duplicados</th>
+                        <th>Rejeitados</th>
+                        <th>Mensagem</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in logs_recentes %}
+                    <tr>
+                        <td>{{ log.data_importacao|date:"d/m/Y H:i" }}</td>
+                        <td>{{ log.arquivo.name }}</td>
+                        <td>
+                            {% if log.status == 'SUCESSO' %}
+                                <span class="badge bg-success">Sucesso</span>
+                            {% elif log.status == 'PARCIAL' %}
+                                <span class="badge bg-warning">Parcial</span>
+                            {% else %}
+                                <span class="badge bg-danger">Erro</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ log.registros_importados }}</td>
+                        <td>{{ log.registros_duplicados }}</td>
+                        <td>{{ log.registros_rejeitados }}</td>
+                        <td>{{ log.mensagem }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Exemplo de Arquivo -->
+<div class="card mt-4">
+    <div class="card-header">
+        <i class="fas fa-download"></i> Exemplo de Arquivo
+    </div>
+    <div class="card-body">
+        <p>Aqui está um exemplo de como seu arquivo deve estar formatado:</p>
+        
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered">
+                <thead>
+                    <tr>
+                        <th>data</th>
+                        <th>lancamento</th>
+                        <th>categoria</th>
+                        <th>tipo</th>
+                        <th>valor</th>
+                        <th>fonte</th>
+                        <th>conta_final</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>2025-10-01</td>
+                        <td>Salário</td>
+                        <td>Salário</td>
+                        <td>RECEITA</td>
+                        <td>5000.00</td>
+                        <td>Santander</td>
+                        <td>Conta Corrente</td>
+                    </tr>
+                    <tr>
+                        <td>2025-10-02</td>
+                        <td>Aluguel</td>
+                        <td>Aluguel</td>
+                        <td>DESPESA</td>
+                        <td>1500.00</td>
+                        <td>Santander</td>
+                        <td>Conta Corrente</td>
+                    </tr>
+                    <tr>
+                        <td>2025-10-03</td>
+                        <td>Supermercado</td>
+                        <td>Alimentação</td>
+                        <td>DESPESA</td>
+                        <td>250.75</td>
+                        <td>Nubank</td>
+                        <td>Carteira</td>
+                    </tr>
+                    <tr>
+                        <td>2025-10-05</td>
+                        <td>Investimento</td>
+                        <td>Investimento</td>
+                        <td>CRÉDITO</td>
+                        <td>1000.00</td>
+                        <td>Santander</td>
+                        <td>Poupança</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
