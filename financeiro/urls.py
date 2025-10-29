@@ -12,5 +12,5 @@ urlpatterns = [
     path('relatorio/', views.relatorio, name='relatorio'),
     
     # Rotas de Ação (exemplo: para AJAX)
-    # path('atualizar_meta/', views.atualizar_meta, name='atualizar_meta'), # Removida para corrigir o AttributeError
+    path('atualizar_meta/', views.atualizar_meta, name='atualizar_meta'),
 ]
