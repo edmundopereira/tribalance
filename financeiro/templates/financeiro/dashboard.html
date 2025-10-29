@@ -44,19 +44,19 @@
     <div class="col-md-3">
         <div class="kpi-card positive">
             <div class="kpi-label">Receita Total</div>
-            <div class="kpi-value">R$ {{ kpis.receita_total|floatformat:2 }}</div>
+            <div class="kpi-value">{{ kpis.receita_total }}</div>
         </div>
     </div>
     <div class="col-md-3">
         <div class="kpi-card negative">
             <div class="kpi-label">Despesa Total</div>
-            <div class="kpi-value">R$ {{ kpis.despesa_total|floatformat:2 }}</div>
+            <div class="kpi-value">{{ kpis.despesa_total }}</div>
         </div>
     </div>
     <div class="col-md-3">
         <div class="kpi-card {% if kpis.saldo >= 0 %}positive{% else %}negative{% endif %}">
             <div class="kpi-label">Saldo</div>
-            <div class="kpi-value">R$ {{ kpis.saldo|floatformat:2 }}</div>
+            <div class="kpi-value">{{ kpis.saldo }}</div>
         </div>
     </div>
     <div class="col-md-3">
@@ -242,4 +242,3 @@
     });
 </script>
 {% endblock %}
-

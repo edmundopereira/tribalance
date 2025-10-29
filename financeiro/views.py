@@ -14,9 +14,9 @@ from .utils import (
     calcular_kpis,
     classificar_lancamento,
     exportar_csv,
-    exportar_excel
+    exportar_excel,
+    formatar_moeda_br # Importa nova função de formatação
 )
-
 
 def dashboard(request):
     """
@@ -25,32 +25,77 @@ def dashboard(request):
     # Filtros
     periodo = request.GET.get('periodo', 'mes')  # mes, trimestre, ano
     conta = request.GET.get('conta', '')
+
     
     # Determinar data de início baseado no período
     hoje = timezone.now().date()
+    mes_atual = hoje.month
+    
+    # CORREÇÃO: Inicializa data_inicio para garantir que sempre tenha um valor
+    # O valor padrão é o primeiro dia do mês atual.
+    data_inicio = hoje.replace(day=1) 
+    data_fim = hoje # Inicializa data_fim para ser o dia atual (o filtro principal é data__gte)
+
+    # CORREÇÃO: O filtro de data foi ajustado para refletir o período selecionado corretamente.
     if periodo == 'mes':
-        data_inicio = hoje.replace(day=1)
-    elif periodo == 'trimestre':
-        trimestre = (hoje.month - 1) // 3
-        data_inicio = hoje.replace(month=trimestre * 3 + 1, day=1)
-    else:  # ano
-        data_inicio = hoje.replace(month=1, day=1)
-    
+        # data_inicio já está definida como o primeiro dia do mês atual.
+        pass
+    else:
+        if periodo == 'trimestre':
+            # Implementa o Trimestre Móvel (Rolling Quarter): Mês Atual + 2 Meses Anteriores
+            
+            # data_inicio é o primeiro dia de 3 meses atrás
+            mes_inicio = hoje.month - 2
+            ano_inicio = hoje.year
+            
+            if mes_inicio <= 0:
+                mes_inicio += 12
+                ano_inicio -= 1
+            
+            data_inicio = hoje.replace(year=ano_inicio, month=mes_inicio, day=1)
+            
+            # data_fim é o dia atual (limite superior)
+            data_fim = hoje 
+
+        elif periodo == 'ano':
+            data_inicio = hoje.replace(month=1, day=1)
+            # data_fim é o dia atual (limite superior)
+            data_fim = hoje
+
+        elif periodo == 'ano':
+            data_inicio = hoje.replace(month=1, day=1)
+            # data_fim é o último dia do ano
+            data_fim = hoje.replace(month=12, day=31)
+
     # Query base
-    lancamentos = Lancamento.objects.filter(data__gte=data_inicio)
-    
+    if periodo == 'mes':
+        # Filtra pelo mês exato
+        lancamentos = Lancamento.objects.filter(
+            data__year=hoje.year,
+            data__month=hoje.month
+        )
+    else:
+        # Para trimestre/ano, filtramos entre data_inicio e data_fim
+        lancamentos = Lancamento.objects.filter(data__gte=data_inicio, data__lte=data_fim)
+        
     if conta:
         lancamentos = lancamentos.filter(fonte=conta)
     
     # Calcular KPIs
     kpis = calcular_kpis(lancamentos)
     
+    # Formatar valores monetários para o template
+    kpis['receita_total'] = formatar_moeda_br(kpis['receita_total'])
+    kpis['despesa_total'] = formatar_moeda_br(kpis['despesa_total'])
+    kpis['saldo'] = formatar_moeda_br(kpis['saldo'])
+    
     # Dados para gráficos
     fluxo_caixa = calcular_fluxo_caixa(lancamentos)
     distribuicao_pilares = calcular_distribuicao_pilares(lancamentos)
     
-    # Contas disponíveis
-    contas = Lancamento.objects.values_list('fonte', flat=True).distinct()
+    # Contas disponíveis (sem duplicar)
+    contas = list(Lancamento.objects.values_list('fonte', flat=True).distinct().order_by('fonte'))
+
     
     context = {
         'kpis': kpis,
@@ -59,7 +104,39 @@ def dashboard(request):
         'periodo': periodo,
         'conta': conta,
         'contas': contas,
-        'data_inicio': data_inicio,
+        'data_inicio': data_inicio, 
+        'data_fim': data_fim, # Usa data_fim corrigida
+    }
+    
+    return render(request, 'financeiro/dashboard.html', context)
+    
+    if conta:
+        lancamentos = lancamentos.filter(fonte=conta)
+    
+    # Calcular KPIs
+    kpis = calcular_kpis(lancamentos)
+    
+    # Formatar valores monetários para o template
+    kpis['receita_total'] = formatar_moeda_br(kpis['receita_total'])
+    kpis['despesa_total'] = formatar_moeda_br(kpis['despesa_total'])
+    kpis['saldo'] = formatar_moeda_br(kpis['saldo'])
+    
+    # Dados para gráficos
+    fluxo_caixa = calcular_fluxo_caixa(lancamentos)
+    distribuicao_pilares = calcular_distribuicao_pilares(lancamentos)
+    
+    # Contas disponíveis (sem duplicar)
+    contas = list(Lancamento.objects.values_list('fonte', flat=True).distinct().order_by('fonte'))
+
+    
+    context = {
+        'kpis': kpis,
+        'fluxo_caixa_json': json.dumps(fluxo_caixa),
+        'distribuicao_pilares_json': json.dumps(distribuicao_pilares),
+        'periodo': periodo,
+        'conta': conta,
+        'contas': contas,
+        'data_inicio': data_inicio, # data_inicio está sempre definida
         'data_fim': hoje,
     }
     
@@ -123,22 +200,26 @@ def lista_lancamentos(request):
     
     # Aplicar filtros
     filtros_aplicados = {}
-    
-    # Filtro por data
+
     data_inicio = request.GET.get('data_inicio')
     data_fim = request.GET.get('data_fim')
-    if data_inicio:
-        lancamentos = lancamentos.filter(data__gte=data_inicio)
-        filtros_aplicados['data_inicio'] = data_inicio
-    if data_fim:
-        lancamentos = lancamentos.filter(data__lte=data_fim)
-        filtros_aplicados['data_fim'] = data_fim
-    
-    # Filtro por mês
     mes = request.GET.get('mes')
-    if mes:
-        lancamentos = lancamentos.filter(mes=mes)
-        filtros_aplicados['mes'] = mes
+
+    # Se nenhum filtro de data ou mês for fornecido, filtra para o mês atual por padrão.
+    if not data_inicio and not data_fim and not mes:
+        hoje = timezone.now().date()
+        lancamentos = lancamentos.filter(data__year=hoje.year, data__month=hoje.month)
+    else:
+        # Aplica os filtros de data/mês fornecidos
+        if data_inicio:
+            lancamentos = lancamentos.filter(data__gte=data_inicio)
+            filtros_aplicados['data_inicio'] = data_inicio
+        if data_fim:
+            lancamentos = lancamentos.filter(data__lte=data_fim)
+            filtros_aplicados['data_fim'] = data_fim
+        if mes:
+            lancamentos = lancamentos.filter(mes=mes)
+            filtros_aplicados['mes'] = mes
     
     # Filtro por tipo
     tipo = request.GET.get('tipo')
@@ -184,18 +265,25 @@ def lista_lancamentos(request):
     total_registros = lancamentos.count()
     soma_valores = lancamentos.aggregate(total=Sum('valor'))['total'] or Decimal('0.00')
     
+    # Formatar soma total
+    soma_valores_formatada = formatar_moeda_br(soma_valores)
+    
+    # Adicionar valor formatado a cada lançamento
+    for lancamento in lancamentos:
+        lancamento.valor_formatado = formatar_moeda_br(lancamento.valor)
+    
     # Paginação
     paginator = Paginator(lancamentos, 25)  # 25 registros por página
     page_number = request.GET.get('page', 1)
     page_obj = paginator.get_page(page_number)
-    
-    # Opções para filtros
+      # Opções para filtros (Corrigindo repetição e garantindo ordem)
     meses = Lancamento.MES_CHOICES
     tipos = Lancamento.TIPO_CHOICES
-    pilares = Lancamento.PILAR_CHOICES
-    categorias = Lancamento.objects.values_list('categoria', flat=True).distinct()
-    fontes = Lancamento.objects.values_list('fonte', flat=True).distinct()
-    contas_finais = Lancamento.objects.values_list('conta_final', flat=True).distinct()
+    pilares = Lancamento.PILAR_CHOICES   
+    # Para garantir unicidade e ordem, usamos values_list, distinct e order_by
+    categorias = Lancamento.objects.values_list('categoria', flat=True).order_by('categoria').distinct()
+    fontes = Lancamento.objects.values_list('fonte', flat=True).order_by('fonte').distinct()
+    contas_finais = Lancamento.objects.values_list('conta_final', flat=True).order_by('conta_final').distinct()
     
     # Exportação
     if request.GET.get('export'):
@@ -209,7 +297,7 @@ def lista_lancamentos(request):
         'page_obj': page_obj,
         'paginator': paginator,
         'total_registros': total_registros,
-        'soma_valores': soma_valores,
+        'soma_valores': soma_valores_formatada, # Passa o valor formatado
         'filtros_aplicados': filtros_aplicados,
         'meses': meses,
         'tipos': tipos,
@@ -246,7 +334,7 @@ def planejamento(request):
     # Calcular dados do mês atual
     hoje = timezone.now().date()
     data_inicio = hoje.replace(day=1)
-    lancamentos_mes = Lancamento.objects.filter(data__gte=data_inicio)
+    lancamentos_mes = Lancamento.objects.filter(data__year=hoje.year, data__month=hoje.month)
     
     # Calcular totais por pilar
     distribuicao = {}
@@ -267,6 +355,7 @@ def planejamento(request):
         
         distribuicao[chave_simples] = {
             'total': abs(total),
+            'total_formatado': formatar_moeda_br(abs(total)),
             'meta': metas[pilar],
         }
     
@@ -289,86 +378,67 @@ def planejamento(request):
     context = {
         'metas': metas,
         'distribuicao': distribuicao,
-        'receita_total': receita_total,
+        'receita_total': formatar_moeda_br(receita_total),
     }
     
     return render(request, 'financeiro/planejamento.html', context)
 
 
-def atualizar_meta(request):
-    """
-    View para atualizar metas mensais (AJAX).
-    """
-    if request.method == 'POST':
-        pilar = request.POST.get('pilar')
-        percentual = request.POST.get('percentual')
-        
-        try:
-            meta = MetaMensal.objects.get(pilar=pilar)
-            meta.percentual_ideal = Decimal(percentual)
-            meta.save()
-            
-            return render(request, 'financeiro/partials/meta_atualizada.html', {
-                'meta': meta,
-                'sucesso': True
-            })
-        except Exception as e:
-            return render(request, 'financeiro/partials/meta_atualizada.html', {
-                'erro': str(e),
-                'sucesso': False
-            })
-
-
 def projecao(request):
     """
-    View para projeção financeira.
-    RF04 - Projeção Financeira
+    View para projeção de metas financeiras de longo prazo.
+    RF04 - Projeção de Metas
     """
-    horizonte = request.GET.get('horizonte', 'longo')  # curto, medio, longo
-    aporte_mensal = Decimal(request.GET.get('aporte_mensal', '1000'))
-    taxa_retorno = Decimal(request.POST.get('taxa_retorno', '0.00')) / 100
-    taxa_mensal = Decimal(str((1 + float(taxa_retorno)) ** (1/12) - 1))
-
+    # Parâmetros de simulação (com valores padrão)
+    horizonte = request.GET.get('horizonte', 'longo')
+    aporte_mensal_str = request.GET.get('aporte_mensal', '1000')
+    taxa_retorno_str = request.GET.get('taxa_retorno', '8.0')
     
-    # Determinar período
+    try:
+        aporte_mensal = Decimal(aporte_mensal_str)
+        taxa_retorno = Decimal(taxa_retorno_str) / 100 # Converte para decimal (ex: 8.0 -> 0.08)
+    except:
+        aporte_mensal = Decimal('1000')
+        taxa_retorno = Decimal('0.08')
+        
+    # Determinar horizonte em meses
     if horizonte == 'curto':
         meses = 12
     elif horizonte == 'medio':
         meses = 60
-    else:  # longo
-        meses = 132  # 11 anos
+    else: # longo
+        meses = 132 # 11 anos
+        
+    # Taxa mensal
+    taxa_mensal = (1 + taxa_retorno) ** (Decimal('1') / Decimal('12')) - 1
     
-    # Calcular patrimônio inicial
-    saldo_inicial = Lancamento.objects.filter(
-        pilar_tribalance='CRESCIMENTO & LIBERDADE'
-    ).aggregate(total=Sum('valor'))['total'] or Decimal('0.00')
+    # Simulação de Projeção (Juros Compostos)
+    patrimonio_atual = Decimal('0.00') # Assumindo 0 para simplificar a projeção
+    projecao_data = []
     
-    # Simular crescimento
-    projecao_dados = []
-    patrimonio = saldo_inicial
-    taxa_retorno = Decimal(request.POST.get('taxa_retorno', '0.00')) / 100
-    
-    # Linha 340 Corrigida: Converte a base da potência para float
-    taxa_mensal = (1 + float(taxa_retorno)) ** (1/12) - 1
-    
-    # Converte o resultado de volta para Decimal para o restante dos cálculos
-    taxa_mensal = Decimal(str(taxa_mensal))
-
-
-    
-    for mes in range(meses + 1):
-        projecao_dados.append({
+    for mes in range(1, meses + 1):
+        # 1. Aplica o aporte mensal
+        patrimonio_atual += aporte_mensal
+        
+        # 2. Calcula o rendimento
+        rendimento = patrimonio_atual * taxa_mensal
+        
+        # 3. Adiciona o rendimento ao patrimônio
+        patrimonio_atual += rendimento
+        
+        projecao_data.append({
             'mes': mes,
-            'patrimonio': float(patrimonio),
+            'patrimonio': float(patrimonio_atual)
         })
-        patrimonio = patrimonio * (1 + taxa_mensal) + aporte_mensal
+        
+    patrimonio_final = patrimonio_atual
     
     context = {
         'horizonte': horizonte,
-        'aporte_mensal': aporte_mensal,
-        'taxa_retorno': taxa_retorno * 100,
-        'projecao_json': json.dumps(projecao_dados),
-        'patrimonio_final': float(patrimonio),
+        'aporte_mensal': float(aporte_mensal),
+        'taxa_retorno': float(taxa_retorno * 100), # Volta para percentual para exibição
+        'patrimonio_final': float(patrimonio_final),
+        'projecao_json': json.dumps(projecao_data),
     }
     
     return render(request, 'financeiro/projecao.html', context)
@@ -376,43 +446,87 @@ def projecao(request):
 
 def relatorio(request):
     """
-    View para relatório e parecer financeiro.
-    RF05 - Relatório e Parecer Financeiro
+    View para relatórios gerenciais e parecer financeiro.
+    RF05 - Relatório Gerencial
     """
-    periodo = request.GET.get('periodo', 'mes')
+    # Filtros
+    periodo = request.GET.get('periodo', 'mes')  # mes, trimestre, ano
     
     # Determinar período
     hoje = timezone.now().date()
-    if periodo == 'mes':
-        data_inicio = hoje.replace(day=1)
-    elif periodo == 'trimestre':
-        trimestre = (hoje.month - 1) // 3
-        data_inicio = hoje.replace(month=trimestre * 3 + 1, day=1)
-    else:  # ano
-        data_inicio = hoje.replace(month=1, day=1)
+    mes_atual = hoje.month
+
+    # Define o padrão como Mês Atual. data_inicio é sempre definida aqui.
+    data_inicio = hoje.replace(day=1) 
     
-    lancamentos = Lancamento.objects.filter(data__gte=data_inicio)
+    if periodo == 'trimestre':
+            # Implementa o Trimestre Móvel (Rolling Quarter): Mês Atual + 2 Meses Anteriores
+            
+            # data_inicio é o primeiro dia de 3 meses atrás
+            mes_inicio = hoje.month - 2
+            ano_inicio = hoje.year
+            
+            if mes_inicio <= 0:
+                mes_inicio += 12
+                ano_inicio -= 1
+            
+            data_inicio = hoje.replace(year=ano_inicio, month=mes_inicio, day=1)
+            
+            # data_fim é o dia atual (limite superior)
+            data_fim = hoje 
+
+    elif periodo == 'ano':
+            data_inicio = hoje.replace(month=1, day=1)
+            # data_fim é o dia atual (limite superior)
+            data_fim = hoje
+    
+    # Query base
+    if periodo == 'mes':
+        # Filtra pelo mês exato
+        lancamentos = Lancamento.objects.filter(
+            data__year=hoje.year,
+            data__month=hoje.month
+        )
+    else:
+        # Para trimestre/ano, filtramos entre data_inicio e data_fim
+        lancamentos = Lancamento.objects.filter(data__gte=data_inicio, data__lte=data_fim)
     
     # Calcular métricas
     kpis = calcular_kpis(lancamentos)
     
-    # Análise por pilar
+    # Análise de Pilares
     analise_pilares = {}
-    for pilar, _ in Lancamento.PILAR_CHOICES:
-        total = lancamentos.filter(pilar_tribalance=pilar).aggregate(
-            total=Sum('valor')
-        )['total'] or Decimal('0.00')
+    
+    # Guarda o valor original da despesa total antes de formatar para o template
+    despesa_total_original = kpis['despesa_total'] 
+    total_geral = Decimal(str(despesa_total_original)) # Garante que seja Decimal para cálculos
+    
+    # Formatar valores monetários para o template
+    kpis['receita_total'] = formatar_moeda_br(kpis['receita_total'])
+    kpis['despesa_total'] = formatar_moeda_br(despesa_total_original) # Formata o valor original
+    kpis['saldo'] = formatar_moeda_br(kpis['saldo'])
+    
+    chave_map = {
+        'NECESSIDADE': 'NECESSIDADE',
+        'CONFORTO & EXPERIÊNCIA': 'CONFORTO & EXPERIÊNCIA',  
+        'CRESCIMENTO & LIBERDADE': 'CRESCIMENTO & LIBERDADE',  
+    }
+    
+    for pilar in chave_map.keys():
+        total = lancamentos.filter(
+            pilar_tribalance=pilar,
+            tipo__in=['DESPESA', 'DÉBITO']
+        ).aggregate(total=Sum('valor'))['total'] or Decimal('0.00')
         
         analise_pilares[pilar] = {
             'total': abs(total),
+            'total_formatado': formatar_moeda_br(abs(total)),
             'percentual': 0,
         }
-    
-    # Calcular percentuais
-    total_geral = sum(p['total'] for p in analise_pilares.values())
-    if total_geral > 0:
-        for pilar in analise_pilares:
-            analise_pilares[pilar]['percentual'] = (
+        
+        if total_geral > 0:
+            # Garante que a divisão seja feita entre Decimals e só então convertida para float
+            analise_pilares[pilar]['percentual'] = float(
                 (analise_pilares[pilar]['total'] / total_geral) * 100
             )
     
