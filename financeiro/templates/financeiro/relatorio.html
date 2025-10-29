@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load custom_filters %}
 
 {% block title %}Relatório - TriBalance{% endblock %}
 
@@ -45,25 +46,25 @@
     <div class="col-md-3">
         <div class="kpi-card positive">
             <div class="kpi-label">Receita Total</div>
-            <div class="kpi-value">R$ {{ kpis.receita_total|floatformat:2 }}</div>
+            <div class="kpi-value">{{ kpis.receita_total }}</div>
         </div>
     </div>
     <div class="col-md-3">
         <div class="kpi-card negative">
             <div class="kpi-label">Despesa Total</div>
-            <div class="kpi-value">R$ {{ kpis.despesa_total|floatformat:2 }}</div>
+            <div class="kpi-value">{{ kpis.despesa_total }}</div>
         </div>
     </div>
     <div class="col-md-3">
         <div class="kpi-card {% if kpis.saldo >= 0 %}positive{% else %}negative{% endif %}">
             <div class="kpi-label">Saldo</div>
-            <div class="kpi-value">R$ {{ kpis.saldo|floatformat:2 }}</div>
+            <div class="kpi-value">{{ kpis.saldo }}</div>
         </div>
     </div>
     <div class="col-md-3">
         <div class="kpi-card">
             <div class="kpi-label">Índice de Equilíbrio</div>
-            <div class="kpi-value">{{ kpis.fbi|floatformat:2 }}</div>
+            <div class="kpi-value">{{ kpis.fbi|floatformat:2|default:"0.00"|br_format }}</div>
         </div>
     </div>
 </div>
@@ -88,8 +89,8 @@
                                 <i class="fas fa-chart-line"></i> Crescimento & Liberdade
                             {% endif %}
                         </h5>
-                        <p class="h4">R$ {{ dados.total|floatformat:2 }}</p>
-                        <p class="text-muted">{{ dados.percentual|floatformat:2 }}% do total</p>
+                        <p class="h4">{{ dados.total_formatado }}</p>
+                        <p class="text-muted">{{ dados.percentual|floatformat:2|default:"0.00"|br_format }}% do total</p>
                         <div class="progress">
                             <div class="progress-bar" role="progressbar" 
                                  style="width: {{ dados.percentual }}%"
@@ -170,15 +171,15 @@
                     <tbody>
                         <tr>
                             <td><strong>Taxa de Acúmulo (MWR):</strong></td>
-                            <td>{{ kpis.mwr|floatformat:2 }}%</td>
+                            <td>{{ kpis.mwr|floatformat:2|default:"0.00"|br_format }}%</td>
                         </tr>
                         <tr>
                             <td><strong>Eficiência de Consumo (CER):</strong></td>
-                            <td>{{ kpis.cer|floatformat:2 }}%</td>
+                            <td>{{ kpis.cer|floatformat:2|default:"0.00"|br_format }}%</td>
                         </tr>
                         <tr>
                             <td><strong>Reserva de Segurança (SBI):</strong></td>
-                            <td>{{ kpis.sbi|floatformat:2 }}</td>
+                            <td>{{ kpis.sbi|floatformat:2|default:"0.00"|br_format }}</td>
                         </tr>
                     </tbody>
                 </table>
@@ -188,11 +189,11 @@
                     <tbody>
                         <tr>
                             <td><strong>Progresso Liberdade (FPS):</strong></td>
-                            <td>{{ kpis.fps|floatformat:2 }}%</td>
+                            <td>{{ kpis.fps|floatformat:2|default:"0.00"|br_format }}%</td>
                         </tr>
                         <tr>
                             <td><strong>Índice de Equilíbrio (FBI):</strong></td>
-                            <td>{{ kpis.fbi|floatformat:2 }}</td>
+                            <td>{{ kpis.fbi|floatformat:2|default:"0.00"|br_format }}</td>
                         </tr>
                     </tbody>
                 </table>
@@ -225,4 +226,3 @@
 </div>
 
 {% endblock %}
-

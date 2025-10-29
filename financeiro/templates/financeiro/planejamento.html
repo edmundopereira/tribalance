@@ -19,7 +19,7 @@
     <div class="card-body">
         <div class="row">
             <div class="col-md-12">
-                <h2 class="text-success">R$ {{ receita_total|floatformat:2 }}</h2>
+                <h2 class="text-success">{{ receita_total }}</h2>
                 <p class="text-muted">Baseado em dados do mês atual</p>
             </div>
         </div>
@@ -55,7 +55,7 @@
                 
                 <div class="mb-3">
                     <label class="form-label">Valor Atual</label>
-                    <p class="h5">R$ {{ distribuicao.total|floatformat:2 }}</p>
+                    <p class="h5">{{ distribuicao.total_formatado }}</p>
                 </div>
                 
                 <div class="mb-3">
@@ -205,4 +205,3 @@
     });
 </script>
 {% endblock %}
-

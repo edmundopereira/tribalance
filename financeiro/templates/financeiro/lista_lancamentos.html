@@ -117,7 +117,7 @@
     </div>
     <div class="summary-item">
         <div class="summary-label">Soma dos Valores</div>
-        <div class="summary-value">R$ {{ soma_valores|floatformat:2 }}</div>
+        <div class="summary-value">{{ soma_valores }}</div>
     </div>
 </div>
 
@@ -162,7 +162,7 @@
                             {% endif %}
                         </td>
                         <td class="{% if lancamento.valor > 0 %}text-success{% else %}text-danger{% endif %}">
-                            R$ {{ lancamento.valor|floatformat:2 }}
+                            {{ lancamento.valor_formatado }}
                         </td>
                         <td>{{ lancamento.fonte }}</td>
                         <td>{{ lancamento.conta_final }}</td>
@@ -242,4 +242,3 @@
 </div>
 
 {% endblock %}
-

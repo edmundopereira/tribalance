@@ -8,6 +8,16 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 
 from .models import Lancamento, CategoriaPilar
+import locale
+# Tenta configurar o locale para pt_BR.UTF-8. Se falhar, tenta pt_BR.
+try:
+    locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
+except locale.Error:
+    try:
+        locale.setlocale(locale.LC_ALL, 'pt_BR')
+    except locale.Error:
+        # Se falhar, usa o padrão do sistema e confia na formatação manual
+        pass
 
 
 def processar_arquivo_importacao(arquivo ):
@@ -46,6 +56,9 @@ def processar_arquivo_importacao(arquivo ):
             return resultado
         
         resultado['total'] = len(df)
+        
+        # RF01.1 - Excluir todos os lançamentos existentes antes de importar
+        Lancamento.objects.all().delete()
         
         # Processar cada linha
         for idx, row in df.iterrows():
@@ -89,17 +102,10 @@ def processar_arquivo_importacao(arquivo ):
                 categoria = str(row['categoria']).strip()
                 pilar = classificar_lancamento(categoria)
                 
-                # Verificar duplicidade
-                lancamento_existente = Lancamento.objects.filter(
-                    data=data,
-                    lancamento=str(row['lancamento']).strip(),
-                    valor=valor,
-                    fonte=str(row['fonte']).strip()
-                ).exists()
-                
-                if lancamento_existente:
-                    resultado['duplicados'] += 1
-                    continue
+                # A verificação de duplicidade foi removida a pedido do usuário.
+                # Todas as transações serão importadas.
+                # resultado['duplicados'] += 1
+                # continue
                 
                 # Criar lançamento
                 Lancamento.objects.create(
@@ -245,6 +251,33 @@ def calcular_kpis(lancamentos):
         'sbi': round(sbi, 2),
         'fps': round(fps, 2),
     }
+
+def formatar_numero_br(valor, casas_decimais=2):
+    """
+    Formata um valor numérico para o padrão brasileiro (X.XXX,XX).
+    """
+    if valor is None:
+        return '0,00'
+    
+    # Converte para float para garantir o funcionamento do locale.format_string
+    try:
+        valor = float(valor)
+    except:
+        return '0,00'
+
+    formato = f"%.{casas_decimais}f"
+    return locale.format_string(formato, valor, grouping=True).replace('.', '#').replace(',', '.').replace('#', ',')
+
+
+def formatar_moeda_br(valor):
+    """
+    Formata um valor numérico para o padrão monetário brasileiro (R$ X.XXX,XX).
+    """
+    if valor is None:
+        return 'R$ 0,00'
+    
+    # Usa a função formatar_numero_br e adiciona o símbolo de moeda
+    return f'R$ {formatar_numero_br(valor)}'
 
 
 def exportar_csv(lancamentos, nome_arquivo='lancamentos'):
