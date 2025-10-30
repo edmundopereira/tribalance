@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container mt-4">
+  <h3>Importar Dívidas de Arquivo Excel</h3>
+  <form method="POST" enctype="multipart/form-data" class="mt-3">
+    {% csrf_token %}
+    <div class="mb-3">
+      <label for="arquivo" class="form-label">Selecione o arquivo Excel (.xlsx)</label>
+      <input type="file" name="arquivo" accept=".xlsx" class="form-control">
+    </div>
+    <button type="submit" class="btn btn-primary">Importar</button>
+    <a href="{% url 'dividas:divida_list' %}" class="btn btn-secondary">Cancelar</a>
+  </form>
+</div>
+{% endblock %}

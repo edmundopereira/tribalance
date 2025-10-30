@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container mt-4">
+  <h2>{{ divida.descricao }}</h2>
+  <p><b>Valor Total:</b> R$ {{ divida.valor_total }} | <b>Forma de Pagamento:</b> {{ divida.get_forma_pagamento_display }}</p>
+  <h4>Parcelas</h4>
+  <table class="table table-bordered">
+    <thead><tr><th>#</th><th>Vencimento</th><th>Valor</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for parcela in parcelas %}
+      <tr>
+        <td>{{ parcela.numero }}</td>
+        <td>{{ parcela.vencimento|date:"d/m/Y" }}</td>
+        <td>R$ {{ parcela.valor }}</td>
+        <td>{% if parcela.paga %}✅{% else %}❌{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <a href="{% url 'dividas:divida_list' %}" class="btn btn-secondary">Voltar</a>
+</div>
+{% endblock %}

@@ -1,0 +1,169 @@
+{% extends 'base.html' %}
+{% block content %}
+{% load br_currency_filter %}
+<div class="container mt-4">
+  <h2 class="mb-3">💳 Dívidas Parceladas</h2>
+  <div class="d-flex mb-3">
+    <a href="{% url 'dividas:importar_excel' %}" class="btn btn-outline-secondary me-2">
+      📂 Importar Excel
+    </a>
+    <a href="{% url 'dividas:divida_create' %}" class="btn btn-primary">+ Nova Dívida</a>
+  </div>
+  
+  <br>
+
+  
+<h4>
+  <div id="totalizador" class="mb-2"></div>
+</h4>
+
+<table id="dividasTable" class="table table-hover align-middle shadow-sm">
+  <thead class="table-light">
+    <tr>
+      <th class="px-3 py-3">Descrição</th>
+      <th class="px-3 py-3">Tipo Despesa</th>
+      <th class="px-3 py-3">Forma Pagamento</th>
+      <th class="px-3 py-3">Valor Total</th>
+      <th class="px-3 py-3">Valor Parcela</th>
+      <th class="px-3 py-3">Parcelas</th>
+      <th class="px-3 py-3">Restantes</th>
+      <th class="px-3 py-3">Próx. Vencimento</th>
+      <th class="px-3 py-3">Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for divida in dividas %}
+    <tr>
+      <td class="px-3 py-2"><strong>{{ divida.descricao }}</strong></td>
+      <td class="px-3 py-2">{{ divida.tipo_despesa }}</td>
+      <td class="px-3 py-2">{{ divida.get_forma_pagamento_display }}</td>
+      <td class="px-3 py-2">{{ divida.valor_total|br_currency }}</td>
+      <td class="px-3 py-2">{{ divida.valor_parcela|br_currency }}</td>
+      <td class="px-3 py-2">{{ divida.parcelas_totais }}</td>
+      <td class="px-3 py-2">{{ divida.parcelas_restantes }}</td>
+      <td class="px-3 py-2">
+        {% if divida.parcelas.first %}
+          {{ divida.parcelas.first.vencimento|date:"d/m/Y" }}
+        {% endif %}
+      </td>
+      <td class="px-3 py-2">
+        {% if divida.quitada %}
+          <span class="text-success fw-bold">Quitada</span>
+        {% else %}
+          <span class="text-warning">Em aberto</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% empty %}
+    <tr>
+      <td colspan="9" class="text-center text-muted">Nenhuma dívida cadastrada.</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{# Script para totalizador e ordenação #}
+<script>
+  /**
+   * Converte um valor de moeda em string no formato brasileiro para número
+   * Ex: "R$ 1.234,56" -> 1234.56
+   */
+  function parseCurrency(value) {
+    if (!value) return 0;
+    // remove espaços e letras
+    var cleaned = value.replace(/\s/g, '').replace(/[^0-9,.-]/g, '');
+    // remove separador de milhar (ponto) e troca vírgula por ponto
+    cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+    var num = parseFloat(cleaned);
+    return isNaN(num) ? 0 : num;
+  }
+
+  /**
+   * Converte data no formato dd/mm/yyyy em objeto Date
+   */
+  function parseDate(value) {
+    var parts = value.split('/');
+    if (parts.length === 3) {
+      return new Date(parts[2], parts[1] - 1, parts[0]);
+    }
+    return new Date(value);
+  }
+
+  /**
+   * Atualiza o totalizador com a soma das colunas Valor Total e Valor Parcela
+   */
+  function updateTotals() {
+    var table = document.getElementById('dividasTable');
+    if (!table || !table.tBodies || !table.tBodies[0]) return;
+    var rows = table.tBodies[0].rows;
+    var totalValorTotal = 0;
+    var totalValorParcela = 0;
+    for (var i = 0; i < rows.length; i++) {
+      var cells = rows[i].cells;
+      // coluna 3 = Valor Total, coluna 4 = Valor Parcela
+      var valorTotalText = cells[3].innerText || cells[3].textContent;
+      var valorParcelaText = cells[4].innerText || cells[4].textContent;
+      totalValorTotal += parseCurrency(valorTotalText);
+      totalValorParcela += parseCurrency(valorParcelaText);
+    }
+    var totalizador = document.getElementById('totalizador');
+    var formatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+    totalizador.innerHTML = '<strong>Total Valor:</strong> ' + formatter.format(totalValorTotal) +
+      ' | <strong>Total Parcelas:</strong> ' + formatter.format(totalValorParcela);
+  }
+
+  // Guarda a direção de ordenação de cada coluna (ascendente/descendente)
+  var sortDirections = {};
+
+  /**
+   * Ordena a tabela pela coluna especificada
+   * @param {number} columnIndex Índice da coluna a ser ordenada
+   */
+  function sortTable(columnIndex) {
+    var table = document.getElementById('dividasTable');
+    var tbody = table.tBodies[0];
+    var rowsArray = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+    var dir = sortDirections[columnIndex] || 'asc';
+    rowsArray.sort(function(a, b) {
+      var aText = a.cells[columnIndex].innerText.trim();
+      var bText = b.cells[columnIndex].innerText.trim();
+      // detectar datas dd/mm/yyyy
+      var dateRegex = /^\d{2}\/\d{2}\/\d{4}$/;
+      if (dateRegex.test(aText) && dateRegex.test(bText)) {
+        var diff = parseDate(aText) - parseDate(bText);
+        return dir === 'asc' ? diff : -diff;
+      }
+      // tentar como moeda
+      var aNum = parseCurrency(aText);
+      var bNum = parseCurrency(bText);
+      if ((aNum !== 0 || bNum !== 0) || (columnIndex === 3 || columnIndex === 4)) {
+        var diffNum = aNum - bNum;
+        return dir === 'asc' ? diffNum : -diffNum;
+      }
+      // fallback string
+      var comp = aText.localeCompare(bText);
+      return dir === 'asc' ? comp : -comp;
+    });
+    // Alterna direção
+    sortDirections[columnIndex] = dir === 'asc' ? 'desc' : 'asc';
+    // reposiciona linhas
+    rowsArray.forEach(function(row) {
+      tbody.appendChild(row);
+    });
+    // atualiza total após ordenar
+    updateTotals();
+  }
+
+  // Ao carregar a página
+  window.addEventListener('DOMContentLoaded', function() {
+    updateTotals();
+    var headers = document.querySelectorAll('#dividasTable thead th');
+    headers.forEach(function(header, index) {
+      header.style.cursor = 'pointer';
+      header.addEventListener('click', function() {
+        sortTable(index);
+      });
+    });
+  });
+</script>
+{% endblock %}
