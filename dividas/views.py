@@ -12,143 +12,166 @@ from .importer import importar_dividas_de_excel
 
 def divida_list(request):
     """
-    Exibe a listagem de dívidas parceladas com filtros semelhantes à tela de lançamentos.
+    Lista e filtra dívidas parceladas.
 
-    Esta view suporta filtros por mês, ano, tipo de despesa e status via drop-down, bem como
-    filtros textuais por descrição, forma de pagamento e valor da parcela. O cálculo dos
-    totais de dívidas em aberto e dos totais filtrados é feito no backend, permitindo
-    atualização dinâmica no template.
+    Os filtros para mês, ano, tipo de despesa e status são representados por dropdowns no template.
+    Os demais campos (descrição, forma de pagamento, valor da parcela) são tratados como
+    filtros textuais. Para garantir que os filtros de mês/ano funcionem corretamente mesmo
+    quando os campos ``mes`` e ``ano`` do modelo não estiverem preenchidos, esta view calcula
+    dinamicamente as propriedades ``mes_nome`` e ``ano_venc`` para cada dívida com base
+    na data de vencimento da primeira parcela (ou na ``data_compra`` caso não haja parcelas).
+
+    Após aplicar todos os filtros, calcula os totais das dívidas em aberto (ciclo vigente) e os
+    totais para o conjunto filtrado. O resultado é paginado em blocos de 25 registros.
     """
-    # Ordena todas as dívidas pela data de compra (mais recentes primeiro)
-    queryset = Divida.objects.all().order_by('-data_compra')
+    # Carrega todas as dívidas ordenadas pela data de compra (mais recente primeiro)
+    dividas = Divida.objects.all().order_by('-data_compra')
 
-    # Captura os parâmetros de filtro da query string. Campos vazios significam "Todos".
-    mes_param = request.GET.get('mes', '').strip()
-    ano_param = request.GET.get('ano', '').strip()
+    # Mapeia números para nomes de mês em português
+    meses_pt = {
+        1: 'Janeiro', 2: 'Fevereiro', 3: 'Março', 4: 'Abril', 5: 'Maio', 6: 'Junho',
+        7: 'Julho', 8: 'Agosto', 9: 'Setembro', 10: 'Outubro', 11: 'Novembro', 12: 'Dezembro'
+    }
+
+    # Recupera parâmetros de filtro da query string
+    mes_param = request.GET.get('mes', '').strip() # O filtro é um select simples, retorna uma string
+    ano_param = request.GET.get('ano', '').strip() # O filtro é um select simples, retorna uma string
     tipo_param = request.GET.get('tipo', '').strip()
     status_param = request.GET.get('status', '').strip()
     descricao_param = request.GET.get('descricao', '').strip()
     forma_param = request.GET.get('forma', '').strip()
     valor_parcela_param = request.GET.get('valor_parcela', '').strip()
 
-    # Se o filtro de valor da parcela estiver presente e for numérico, aplica via ORM.
+    # Aplica filtros usando o ORM do Django (mais eficiente)
+    # Todos os filtros de texto (descricao, tipo_despesa, forma_pagamento) serão
+    # aplicados na iteração para garantir a busca case-insensitive e accent-insensitive.
+    # Apenas o filtro de valor da parcela é mantido no ORM por ser numérico.
+    
     if valor_parcela_param:
         try:
+            # Filtra por valor_parcela maior ou igual
             valor_num = float(valor_parcela_param.replace('.', '').replace(',', '.'))
-            # valor_parcela é uma propriedade calculada (Decimal); usamos filtros via anotação
-            # ou filtramos posteriormente na lista. Aqui mantemos filtragem posterior.
+            dividas = dividas.filter(valor_parcela__gte=valor_num)
         except ValueError:
-            valor_num = None
-    else:
-        valor_num = None
-
-    # Lista para armazenar resultados após aplicar filtros. Convertemos o queryset em lista
-    # para permitir iteração e cálculo de mes/ano dinâmicos.
+            pass
+            
+    # Filtros de Mês e Ano (requerem a lógica de data da primeira parcela)
+    # Como a lógica de data é complexa (depende da primeira parcela), mantemos a iteração
+    # apenas para os filtros de mês/ano e status, mas aplicamos os demais no ORM.
+    
     filtered_list = []
+    # Converte o QuerySet para lista e itera APENAS sobre os resultados já filtrados pelo ORM
+    # Aplica filtros de texto (descricao, tipo, forma) com unaccent e lower,
+    # pois o ORM não suporta __unaccent sem a extensão do banco de dados.
+    for d in list(dividas):
+        """
+        Aplica filtros de texto e calcula dinamicamente o mês (anterior ao vencimento) e o ano de
+        referência para cada dívida. Não utiliza os campos ``mes`` e ``ano`` armazenados na base,
+        garantindo que o campo mês reflita sempre o mês anterior ao próximo vencimento da dívida.
+        """
 
-    # Mapeamento de número do mês para o nome em português.
-    meses_pt = {
-        1: 'Janeiro', 2: 'Fevereiro', 3: 'Março', 4: 'Abril', 5: 'Maio', 6: 'Junho',
-        7: 'Julho', 8: 'Agosto', 9: 'Setembro', 10: 'Outubro', 11: 'Novembro', 12: 'Dezembro'
-    }
-
-    # Itéra sobre todas as dívidas do queryset (sem filtros de texto por enquanto)
-    for d in queryset:
-        # Calcula dinamicamente o mês e o ano de referência se não estiverem preenchidos
-        if d.mes:
-            mes_nome = d.mes
-        else:
-            primeira_parcela = d.parcelas.order_by('numero').first()
-            data_ref = (primeira_parcela.vencimento if primeira_parcela and primeira_parcela.vencimento
-                        else d.data_compra)
-            mes_nome = meses_pt.get(data_ref.month, '')
-        if d.ano:
-            ano_venc = d.ano
-        else:
-            primeira_parcela = d.parcelas.order_by('numero').first()
-            data_ref = (primeira_parcela.vencimento if primeira_parcela and primeira_parcela.vencimento
-                        else d.data_compra)
-            ano_venc = data_ref.year
-        # Atribui estes atributos no objeto para uso no template
-        d.mes_nome = mes_nome
-        d.ano_venc = ano_venc
-
-        # Aplica filtro de valor da parcela (>=) se definido
-        if valor_num is not None and float(d.valor_parcela) < valor_num:
-            continue
-
-        # Filtros textuais: Descrição contém
+        # Filtros de texto: Descrição (contém)
         if descricao_param:
             if unidecode(d.descricao).lower().find(unidecode(descricao_param).lower()) == -1:
                 continue
+
+        # Filtro por tipo de despesa (igualdade exata após normalização)
+        if tipo_param:
+            if not d.tipo_despesa or unidecode(d.tipo_despesa).lower() != unidecode(tipo_param).lower():
+                continue
+
         # Filtro por forma de pagamento (substring)
         if forma_param:
             if unidecode(d.forma_pagamento).lower().find(unidecode(forma_param).lower()) == -1:
                 continue
-        # Filtro por tipo de despesa (igualdade exata após normalizar)
-        if tipo_param:
-            if not d.tipo_despesa or unidecode(d.tipo_despesa).lower() != unidecode(tipo_param).lower():
-                continue
-        # Filtro por status (Em aberto/Quitada)
-        if status_param:
-            current_status = d.status  # usa propriedade status do modelo
-            if unidecode(status_param).lower() != unidecode(current_status).lower():
-                continue
-        # Filtro por mês (nome do mês em português)
+
+        # Calcula dinamicamente o mês e o ano de referência SEMPRE com base na
+        # data de vencimento da primeira parcela (ou data_compra). O mês é o mês
+        # anterior ao vencimento. Se o vencimento for em janeiro, o mês é dezembro
+        # e o ano é decrementado.
+        primeira_parcela = d.parcelas.order_by('numero').first()
+        data_ref = primeira_parcela.vencimento if primeira_parcela and primeira_parcela.vencimento else d.data_compra
+        mes_venc = data_ref.month
+        if mes_venc == 1:
+            # vencimento em janeiro -> mês anterior é dezembro do ano anterior
+            mes_idx_prev = 12 - 1  # índice 11 (Dezembro) na lista meses_pt
+            ano_prev = data_ref.year - 1
+        else:
+            # demais meses -> subtrai 1 mês
+            mes_idx_prev = mes_venc - 2
+            ano_prev = data_ref.year
+        mes_nome = meses_pt.get(mes_idx_prev + 1, '')
+        ano_venc = ano_prev
+
+        # Atribui atributos dinâmicos para uso no template
+        d.mes_nome = mes_nome
+        d.ano_venc = ano_venc
+
+        # Filtro de mês (comparação acento-insensível)
         if mes_param:
-            if unidecode(mes_param).lower() != unidecode(mes_nome).lower():
+            if unidecode(mes_nome).lower() != unidecode(mes_param).lower():
                 continue
-        # Filtro por ano
+
+        # Filtro de ano
         if ano_param:
             try:
                 ano_int = int(ano_param)
                 if ano_venc != ano_int:
                     continue
             except ValueError:
-                # Se ano_param não for numérico, ignora o filtro
+                pass
+
+        # Filtro de status (Em aberto ou Quitada)
+        if status_param:
+            current_status = d.status  # usa propriedade ``status`` do modelo
+            if unidecode(status_param).lower() != unidecode(current_status).lower():
                 continue
-        # Se passou em todos os filtros, adiciona à lista final
+
+        # Se passou por todos os filtros, adiciona à lista
         filtered_list.append(d)
 
-    # Calcula totais de dívidas em aberto (ciclo vigente) para todas as dívidas
-    open_total_valor = 0.0
-    open_total_parcela = 0.0
-    for d in Divida.objects.all():
-        if d.status == 'Em aberto':
+    # Calcula totais das dívidas em aberto (ciclo atual) em todo o conjunto de dívidas
+    # Usamos o QuerySet original (dividas.all()) para calcular os totais em aberto
+    all_dividas = Divida.objects.all()
+    open_total_valor = 0
+    open_total_parcela = 0
+    for d in all_dividas:
+        # Assumindo que 'is_open' é uma propriedade do modelo/manager
+        is_open = d.is_open if hasattr(d, 'is_open') else d.parcelas.filter(quitada=False).exists()
+        if is_open:
             open_total_valor += float(d.valor_total)
             open_total_parcela += float(d.valor_parcela)
 
-    # Calcula totais filtrados (independente de estar em aberto)
+    # Calcula totais das dívidas filtradas (independente de estar em aberto ou não)
     filtered_total_valor = sum(float(d.valor_total) for d in filtered_list)
     filtered_total_parcela = sum(float(d.valor_parcela) for d in filtered_list)
 
-    # Paginação: 25 itens por página
+    # Paginação
     paginator = Paginator(filtered_list, 25)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
 
-    # Lista de anos disponíveis a partir das dívidas (dinâmica)
+    # Lista de anos e tipos de despesa disponíveis para dropdowns (inclui todos do banco)
+    # Calcula anos disponíveis com base no mês anterior ao vencimento da primeira parcela
     anos_set = set()
-    for d in Divida.objects.all():
-        if d.ano:
-            anos_set.add(d.ano)
+    for p in all_dividas:
+        primeira = p.parcelas.order_by('numero').first()
+        ref_date = primeira.vencimento if primeira and primeira.vencimento else p.data_compra
+        # Se o vencimento é janeiro, o ano de referência é do ano anterior
+        if ref_date.month == 1:
+            anos_set.add(ref_date.year - 1)
         else:
-            # calcula ano baseado na primeira parcela ou data_compra
-            p = d.parcelas.order_by('numero').first()
-            data_ref = (p.vencimento if p and p.vencimento else d.data_compra)
-            anos_set.add(data_ref.year)
+            anos_set.add(ref_date.year)
     anos_disponiveis = sorted(anos_set)
+    tipos_disponiveis = sorted({d.tipo_despesa for d in all_dividas if d.tipo_despesa})
 
-    # Lista de tipos de despesa disponíveis
-    tipos_disponiveis = sorted({d.tipo_despesa for d in Divida.objects.all() if d.tipo_despesa})
-
-    # Passa a querystring para links de paginação (sem o parâmetro de page)
+    # Prepara a query string sem o parâmetro "page" para manter filtros na navegação
     params = request.GET.copy()
     if 'page' in params:
         params.pop('page')
     querystring = params.urlencode()
 
-    context = {
+    return render(request, 'dividas/divida_list.html', {
         'dividas': page_obj,
         'total_valor': open_total_valor,
         'total_parcela': open_total_parcela,
@@ -156,6 +179,7 @@ def divida_list(request):
         'filtered_total_parcela': filtered_total_parcela,
         'anos_disponiveis': anos_disponiveis,
         'tipos_disponiveis': tipos_disponiveis,
+        # Passa valores selecionados para o template relembrar filtros
         'selected_mes': mes_param,
         'selected_ano': ano_param,
         'selected_tipo': tipo_param,
@@ -164,8 +188,7 @@ def divida_list(request):
         'selected_forma': forma_param,
         'selected_valor_parcela': valor_parcela_param,
         'querystring': querystring,
-    }
-    return render(request, 'dividas/divida_list.html', context)
+    })
 
 
 def divida_create(request):
@@ -175,17 +198,25 @@ def divida_create(request):
         if form.is_valid():
             divida = form.save()
             gerar_parcelas(divida)
-            # Após gerar as parcelas, atribuir os campos de mês e ano com base na data de vencimento da primeira parcela
+            # Após gerar as parcelas, atribui os campos de mês e ano com base na data de vencimento da primeira parcela.
+            # O mês deve ser o mês anterior ao vencimento. Se o vencimento for janeiro, o mês passa a ser dezembro e o ano é decrementado.
             primeira_parcela = divida.parcelas.order_by('numero').first()
             if primeira_parcela and primeira_parcela.vencimento:
+                venc = primeira_parcela.vencimento
                 meses_pt = [
                     'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
                     'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
                 ]
-                month_idx = primeira_parcela.vencimento.month - 1
-                if 0 <= month_idx < len(meses_pt):
-                    divida.mes = meses_pt[month_idx]
-                divida.ano = primeira_parcela.vencimento.year
+                mes_venc = venc.month
+                if mes_venc == 1:
+                    mes_anterior_idx = 12 - 1  # Dezembro
+                    ano_anterior = venc.year - 1
+                else:
+                    mes_anterior_idx = mes_venc - 2
+                    ano_anterior = venc.year
+                if 0 <= mes_anterior_idx < len(meses_pt):
+                    divida.mes = meses_pt[mes_anterior_idx]
+                divida.ano = ano_anterior
                 divida.save(update_fields=['mes', 'ano'])
             return redirect('dividas:divida_list')
     else:
