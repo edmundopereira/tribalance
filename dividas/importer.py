@@ -66,6 +66,12 @@ def importar_dividas_de_excel(caminho_arquivo):
 
     dividas_criadas = []
 
+    # Mapeamento de número do mês para o nome em Português (usado para preencher os campos mes/ano)
+    meses_pt = [
+        'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+        'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+    ]
+
     for _, row in df.iterrows():
         descricao = str(row.get("lancamento", "")).strip()
         # Lê o valor informado na planilha; trata como valor de cada parcela
@@ -73,6 +79,11 @@ def importar_dividas_de_excel(caminho_arquivo):
         valor_unitario = parse_valor(valor_cell)
         # Armazena o tipo de despesa exatamente como aparece na planilha (após remover espaços extras)
         tipo_despesa_raw = str(row.get("tipo_despesa", "")).strip()
+        # Se o tipo de despesa for "Renda", ignorar esta linha (não importar)
+        # Usamos a função normalizar_texto para facilitar a comparação case-insensível e sem acentos.
+        tipo_norm = normalizar_texto(tipo_despesa_raw)
+        if tipo_norm == "renda":
+            continue
         forma = normalizar_texto(row.get("forma_pagamento", ""))
         parcelas_txt = normalizar_texto(row.get("parcelas", ""))
         data = pd.to_datetime(row.get("data", datetime.today()), errors="coerce").date()
@@ -139,5 +150,14 @@ def importar_dividas_de_excel(caminho_arquivo):
                 divida.save(update_fields=["quitada"])
 
         dividas_criadas.append(divida)
+
+        # Após gerar parcelas, atualiza os campos de mês e ano com base na data de vencimento da primeira parcela
+        primeira_parcela = divida.parcelas.order_by('numero').first()
+        if primeira_parcela and primeira_parcela.vencimento:
+            month_idx = primeira_parcela.vencimento.month - 1
+            if 0 <= month_idx < len(meses_pt):
+                divida.mes = meses_pt[month_idx]
+            divida.ano = primeira_parcela.vencimento.year
+            divida.save(update_fields=["mes", "ano"])
 
     return dividas_criadas

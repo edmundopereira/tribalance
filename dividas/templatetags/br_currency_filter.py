@@ -1,45 +1,44 @@
-"""
-Template filter para formatar valores monetários em reais (R$) com
-separador de milhares e vírgula como separador decimal.
-
-Para usar este filtro, adicione a pasta `templatetags` dentro da sua
-aplicação e mova este arquivo para lá. Em seguida, carregue o filtro
-no template com `{% load br_currency_filter %}` e aplique
-`{{ valor|br_currency }}` para formatar números.
-
-Exemplo de uso no template:
-
-```
-{% load br_currency_filter %}
-R$ {{ divida.valor_total|br_currency }}
-```
-
-Obs.: O formato brasileiro utiliza ponto como separador de milhar e
-vírgula como separador decimal, por exemplo "1.234,56".
-"""
-
 from django import template
+from decimal import Decimal
+import locale
 
 register = template.Library()
 
-@register.filter(name='br_currency')
+@register.filter
 def br_currency(value):
-    """Formata um número como moeda brasileira (R$) com duas casas decimais.
-
-    Args:
-        value (float or int or str): valor numérico a ser formatado.
-
-    Returns:
-        str: valor formatado como "R$ 1.234,56".
+    """
+    Formata um valor numérico (float, Decimal ou int) para o formato de moeda brasileira (R$ X.XXX,XX).
     """
     if value is None or value == '':
-        return ''
+        return 'R$ 0,00'
+    
+    # Tenta definir o locale para português do Brasil
     try:
-        number = float(value)
-    except (ValueError, TypeError):
-        return value
-    # Formata com duas casas decimais e separador de milhar
-    formatted = '{:,.2f}'.format(number)
-    # Substitui vírgulas e pontos para o formato brasileiro
-    formatted = formatted.replace(',', 'X').replace('.', ',').replace('X', '.')
-    return f'R$ {formatted}'
+        locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
+    except locale.Error:
+        # Tenta uma alternativa para sistemas Windows
+        try:
+            locale.setlocale(locale.LC_ALL, 'Portuguese_Brazil.1252')
+        except locale.Error:
+            # Fallback manual se o locale não puder ser definido
+            if isinstance(value, str):
+                try:
+                    value = Decimal(value)
+                except:
+                    return 'R$ 0,00'
+            
+            if not isinstance(value, (Decimal, float, int)):
+                return 'R$ 0,00'
+
+            # Formatação manual
+            s = f"{value:,.2f}".replace('.', 'TEMP').replace(',', '.').replace('TEMP', ',')
+            return f"R$ {s}"
+
+    # Se o locale foi definido, usa formatação nativa
+    if isinstance(value, str):
+        try:
+            value = Decimal(value)
+        except:
+            return 'R$ 0,00'
+            
+    return locale.currency(value, grouping=True, symbol=True)

@@ -1,169 +1,243 @@
 {% extends 'base.html' %}
 {% block content %}
 {% load br_currency_filter %}
+
 <div class="container mt-4">
-  <h2 class="mb-3">💳 Dívidas Parceladas</h2>
+  <h2 class="mb-4">💳 Dívidas Parceladas</h2>
+  {# Botões de ação: Importar Excel e Nova Dívida #}
   <div class="d-flex mb-3">
     <a href="{% url 'dividas:importar_excel' %}" class="btn btn-outline-secondary me-2">
       📂 Importar Excel
     </a>
     <a href="{% url 'dividas:divida_create' %}" class="btn btn-primary">+ Nova Dívida</a>
   </div>
-  
-  <br>
+  {# Cartão de totais #}
+  <div class="row">
+    <!-- Card com totais de dívidas em aberto (dados vindos do servidor) -->
+    <div class="col-lg-6 col-md-6 mb-4">
+      <div class="card border-success">
+        <div class="card-body text-center">
+          <h5 class="card-title text-uppercase">Dívida (Em aberto)</h5>
+          <p class="card-text fs-5 mb-2">
+            <strong>Total Valor Parcelado:</strong> {{ total_valor|br_currency }}
+          </p>
+          <p class="card-text fs-5">
+            <strong>Total Valor das Parcelas:</strong> {{ total_parcela|br_currency }}
+          </p>
+        </div>
+      </div>
+    </div>
+    <!-- Card com totais dinâmicos calculados a partir dos resultados filtrados -->
+    <div class="col-lg-6 col-md-6 mb-4">
+      <div class="card border-primary">
+        <div class="card-body text-center">
+          <h5 class="card-title text-uppercase">Total (Filtros)</h5>
+          <p class="card-text fs-5 mb-2">
+            <strong>Total Valor Parcelado (Filtros):</strong>
+            {{ filtered_total_valor|br_currency }}
+          </p>
+          <p class="card-text fs-5">
+            <strong>Total Valor das Parcelas (Filtros):</strong>
+            {{ filtered_total_parcela|br_currency }}
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
 
-  
-<h4>
-  <div id="totalizador" class="mb-2"></div>
-</h4>
+  <!-- Formulário de filtros acima da tabela -->
+  <form id="filterForm" method="get" class="row g-2 mb-3">
+    <div class="col-md-2 col-sm-6">
+      <select name="mes" id="mesFilter" class="form-select form-select-sm" onchange="this.form.submit()">
+        <option value="" {% if not selected_mes %}selected{% endif %}>Todos</option>
+        <option value="Janeiro" {% if selected_mes == 'Janeiro' %}selected{% endif %}>Janeiro</option>
+        <option value="Fevereiro" {% if selected_mes == 'Fevereiro' %}selected{% endif %}>Fevereiro</option>
+        <option value="Março" {% if selected_mes == 'Março' %}selected{% endif %}>Março</option>
+        <option value="Abril" {% if selected_mes == 'Abril' %}selected{% endif %}>Abril</option>
+        <option value="Maio" {% if selected_mes == 'Maio' %}selected{% endif %}>Maio</option>
+        <option value="Junho" {% if selected_mes == 'Junho' %}selected{% endif %}>Junho</option>
+        <option value="Julho" {% if selected_mes == 'Julho' %}selected{% endif %}>Julho</option>
+        <option value="Agosto" {% if selected_mes == 'Agosto' %}selected{% endif %}>Agosto</option>
+        <option value="Setembro" {% if selected_mes == 'Setembro' %}selected{% endif %}>Setembro</option>
+        <option value="Outubro" {% if selected_mes == 'Outubro' %}selected{% endif %}>Outubro</option>
+        <option value="Novembro" {% if selected_mes == 'Novembro' %}selected{% endif %}>Novembro</option>
+        <option value="Dezembro" {% if selected_mes == 'Dezembro' %}selected{% endif %}>Dezembro</option>
+      </select>
+    </div>
+    <div class="col-md-1 col-sm-6">
+      <select name="ano" id="anoFilter" class="form-select form-select-sm" onchange="this.form.submit()">
+        <option value="" {% if not selected_ano %}selected{% endif %}>Todos</option>
+        {% for ano_opcao in anos_disponiveis %}
+          <option value="{{ ano_opcao }}" {% if selected_ano == ano_opcao|stringformat:'s' %}selected{% endif %}>{{ ano_opcao }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2 col-sm-6">
+      <select name="tipo" id="tipoFilter" class="form-select form-select-sm" onchange="this.form.submit()">
+        <option value="" {% if not selected_tipo %}selected{% endif %}>Todos</option>
+        {% for tipo in tipos_disponiveis %}
+          <option value="{{ tipo }}" {% if selected_tipo == tipo %}selected{% endif %}>{{ tipo }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-1 col-sm-6">
+      <select name="status" id="statusFilter" class="form-select form-select-sm" onchange="this.form.submit()">
+        <option value="" {% if not selected_status %}selected{% endif %}>Todos</option>
+        <option value="Em aberto" {% if selected_status == 'Em aberto' %}selected{% endif %}>Em aberto</option>
+        <option value="Quitada" {% if selected_status == 'Quitada' %}selected{% endif %}>Quitada</option>
+      </select>
+    </div>
+    <div class="col-md-2 col-sm-6">
+      <input type="text" name="descricao" id="descricaoFilter" class="form-control form-control-sm" placeholder="Descrição" value="{{ selected_descricao }}">
+    </div>
+    <div class="col-md-2 col-sm-6">
+      <input type="text" name="forma" id="formaFilter" class="form-control form-control-sm" placeholder="Forma Pagamento" value="{{ selected_forma }}">
+    </div>
+    <div class="col-md-2 col-sm-6">
+      <input type="text" name="valor_parcela" id="valorParcelaFilter" class="form-control form-control-sm" placeholder="Valor Parcela" value="{{ selected_valor_parcela }}">
+    </div>
+    <div class="col-md-1 col-sm-6">
+      <button type="submit" class="btn btn-sm btn-secondary w-100">Filtrar</button>
+    </div>
+  </form>
 
-<table id="dividasTable" class="table table-hover align-middle shadow-sm">
-  <thead class="table-light">
-    <tr>
-      <th class="px-3 py-3">Descrição</th>
-      <th class="px-3 py-3">Tipo Despesa</th>
-      <th class="px-3 py-3">Forma Pagamento</th>
-      <th class="px-3 py-3">Valor Total</th>
-      <th class="px-3 py-3">Valor Parcela</th>
-      <th class="px-3 py-3">Parcelas</th>
-      <th class="px-3 py-3">Restantes</th>
-      <th class="px-3 py-3">Próx. Vencimento</th>
-      <th class="px-3 py-3">Status</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for divida in dividas %}
-    <tr>
-      <td class="px-3 py-2"><strong>{{ divida.descricao }}</strong></td>
-      <td class="px-3 py-2">{{ divida.tipo_despesa }}</td>
-      <td class="px-3 py-2">{{ divida.get_forma_pagamento_display }}</td>
-      <td class="px-3 py-2">{{ divida.valor_total|br_currency }}</td>
-      <td class="px-3 py-2">{{ divida.valor_parcela|br_currency }}</td>
-      <td class="px-3 py-2">{{ divida.parcelas_totais }}</td>
-      <td class="px-3 py-2">{{ divida.parcelas_restantes }}</td>
-      <td class="px-3 py-2">
-        {% if divida.parcelas.first %}
-          {{ divida.parcelas.first.vencimento|date:"d/m/Y" }}
-        {% endif %}
-      </td>
-      <td class="px-3 py-2">
-        {% if divida.quitada %}
-          <span class="text-success fw-bold">Quitada</span>
-        {% else %}
-          <span class="text-warning">Em aberto</span>
-        {% endif %}
-      </td>
-    </tr>
-    {% empty %}
-    <tr>
-      <td colspan="9" class="text-center text-muted">Nenhuma dívida cadastrada.</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+  <table id="dividasTable" class="table table-hover table-striped align-middle shadow-sm">
+    <thead class="table-light">
+      <tr>
+        <th class="px-3 py-3">Mês</th>
+        <th class="px-3 py-3">Ano</th>
+        <th class="px-3 py-3">Descrição</th>
+        <th class="px-3 py-3">Tipo Despesa</th>
+        <th class="px-3 py-3">Forma Pagamento</th>
+        <th class="px-3 py-3">Valor Total</th>
+        <th class="px-3 py-3">Valor Parcela</th>
+        <th class="px-3 py-3">Parcelas</th>
+        <th class="px-3 py-3">Restantes</th>
+        <th class="px-3 py-3">Próx. Vencimento</th>
+        <th class="px-3 py-3">Status</th>
+      </tr>
+      {# A linha de filtros foi movida para fora da tabela (acima) #}
+    </thead>
+    <tbody>
+      {% for divida in dividas %}
+      <tr>
+        <td class="px-3 py-2">{{ divida.mes_nome }}</td>
+        <td class="px-3 py-2">{{ divida.ano_venc }}</td>
+        <td class="px-3 py-2"><strong>{{ divida.descricao }}</strong></td>
+        <td class="px-3 py-2">{{ divida.tipo_despesa }}</td>
+        <td class="px-3 py-2">{{ divida.get_forma_pagamento_display }}</td>
+        <td class="px-3 py-2">{{ divida.valor_total|br_currency }}</td>
+        <td class="px-3 py-2">{{ divida.valor_parcela|br_currency }}</td>
+        <td class="px-3 py-2">{{ divida.parcelas_totais }}</td>
+        <td class="px-3 py-2">{{ divida.parcelas_restantes }}</td>
+        <td class="px-3 py-2">
+          {% if divida.parcelas.first %}
+            {{ divida.parcelas.first.vencimento|date:"d/m/Y" }}
+          {% endif %}
+        </td>
+        <td class="px-3 py-2">
+          {% if divida.status == 'Em aberto' %}
+            <span class="text-warning">Em aberto</span>
+          {% else %}
+            <span class="text-success fw-bold">Quitada</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr>
+        <td colspan="11" class="text-center text-muted">Nenhuma dívida cadastrada.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
 
-{# Script para totalizador e ordenação #}
+  {# Navegação de páginas (simplificada) #}
+  {% if dividas.paginator.num_pages > 1 %}
+  <nav aria-label="Paginação de dívidas" class="mt-3">
+    <ul class="pagination justify-content-center">
+      {# Link para página anterior ou estado desabilitado se não houver #}
+      {% if dividas.has_previous %}
+        <li class="page-item">
+          <a class="page-link" href="?page={{ dividas.previous_page_number }}{% if querystring %}&{{ querystring }}{% endif %}">Anterior</a>
+        </li>
+      {% else %}
+        <li class="page-item disabled"><span class="page-link">Anterior</span></li>
+      {% endif %}
+
+      {# Exibe página atual e total de páginas no centro #}
+      <li class="page-item disabled">
+        <span class="page-link">Página {{ dividas.number }} de {{ dividas.paginator.num_pages }}</span>
+      </li>
+
+      {# Link para próxima página ou estado desabilitado se não houver #}
+      {% if dividas.has_next %}
+        <li class="page-item">
+          <a class="page-link" href="?page={{ dividas.next_page_number }}{% if querystring %}&{{ querystring }}{% endif %}">Próxima</a>
+        </li>
+      {% else %}
+        <li class="page-item disabled"><span class="page-link">Próxima</span></li>
+      {% endif %}
+    </ul>
+  </nav>
+  {% endif %}
+</div>
+
+{# Script para ordenação das colunas (local, página atual) #}
 <script>
   /**
-   * Converte um valor de moeda em string no formato brasileiro para número
-   * Ex: "R$ 1.234,56" -> 1234.56
+   * Faz ordenação da tabela na página atual ao clicar no cabeçalho.
    */
-  function parseCurrency(value) {
-    if (!value) return 0;
-    // remove espaços e letras
-    var cleaned = value.replace(/\s/g, '').replace(/[^0-9,.-]/g, '');
-    // remove separador de milhar (ponto) e troca vírgula por ponto
-    cleaned = cleaned.replace(/\./g, '').replace(',', '.');
-    var num = parseFloat(cleaned);
-    return isNaN(num) ? 0 : num;
-  }
-
-  /**
-   * Converte data no formato dd/mm/yyyy em objeto Date
-   */
-  function parseDate(value) {
-    var parts = value.split('/');
-    if (parts.length === 3) {
-      return new Date(parts[2], parts[1] - 1, parts[0]);
-    }
-    return new Date(value);
-  }
-
-  /**
-   * Atualiza o totalizador com a soma das colunas Valor Total e Valor Parcela
-   */
-  function updateTotals() {
-    var table = document.getElementById('dividasTable');
-    if (!table || !table.tBodies || !table.tBodies[0]) return;
-    var rows = table.tBodies[0].rows;
-    var totalValorTotal = 0;
-    var totalValorParcela = 0;
-    for (var i = 0; i < rows.length; i++) {
-      var cells = rows[i].cells;
-      // coluna 3 = Valor Total, coluna 4 = Valor Parcela
-      var valorTotalText = cells[3].innerText || cells[3].textContent;
-      var valorParcelaText = cells[4].innerText || cells[4].textContent;
-      totalValorTotal += parseCurrency(valorTotalText);
-      totalValorParcela += parseCurrency(valorParcelaText);
-    }
-    var totalizador = document.getElementById('totalizador');
-    var formatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
-    totalizador.innerHTML = '<strong>Total Valor:</strong> ' + formatter.format(totalValorTotal) +
-      ' | <strong>Total Parcelas:</strong> ' + formatter.format(totalValorParcela);
-  }
-
-  // Guarda a direção de ordenação de cada coluna (ascendente/descendente)
-  var sortDirections = {};
-
-  /**
-   * Ordena a tabela pela coluna especificada
-   * @param {number} columnIndex Índice da coluna a ser ordenada
-   */
-  function sortTable(columnIndex) {
-    var table = document.getElementById('dividasTable');
-    var tbody = table.tBodies[0];
-    var rowsArray = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
-    var dir = sortDirections[columnIndex] || 'asc';
-    rowsArray.sort(function(a, b) {
-      var aText = a.cells[columnIndex].innerText.trim();
-      var bText = b.cells[columnIndex].innerText.trim();
-      // detectar datas dd/mm/yyyy
-      var dateRegex = /^\d{2}\/\d{2}\/\d{4}$/;
-      if (dateRegex.test(aText) && dateRegex.test(bText)) {
-        var diff = parseDate(aText) - parseDate(bText);
-        return dir === 'asc' ? diff : -diff;
-      }
-      // tentar como moeda
-      var aNum = parseCurrency(aText);
-      var bNum = parseCurrency(bText);
-      if ((aNum !== 0 || bNum !== 0) || (columnIndex === 3 || columnIndex === 4)) {
-        var diffNum = aNum - bNum;
-        return dir === 'asc' ? diffNum : -diffNum;
-      }
-      // fallback string
-      var comp = aText.localeCompare(bText);
-      return dir === 'asc' ? comp : -comp;
-    });
-    // Alterna direção
-    sortDirections[columnIndex] = dir === 'asc' ? 'desc' : 'asc';
-    // reposiciona linhas
-    rowsArray.forEach(function(row) {
-      tbody.appendChild(row);
-    });
-    // atualiza total após ordenar
-    updateTotals();
-  }
-
-  // Ao carregar a página
-  window.addEventListener('DOMContentLoaded', function() {
-    updateTotals();
-    var headers = document.querySelectorAll('#dividasTable thead th');
-    headers.forEach(function(header, index) {
+  document.addEventListener('DOMContentLoaded', function() {
+    const table = document.getElementById('dividasTable');
+    // Aplica ordenação apenas nos cabeçalhos da primeira linha (evita filtros)
+    const thead = table.querySelector('thead');
+    const headerRow = thead ? thead.rows[0] : null;
+    const headers = headerRow ? headerRow.querySelectorAll('th') : [];
+    headers.forEach((header, index) => {
       header.style.cursor = 'pointer';
-      header.addEventListener('click', function() {
+      header.addEventListener('click', () => {
         sortTable(index);
       });
     });
   });
+
+  function sortTable(columnIndex) {
+    const table = document.getElementById('dividasTable');
+    const tbody = table.tBodies[0];
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    const dir = sortDirections[columnIndex] || 'asc';
+    rows.sort((a, b) => {
+      const aText = a.cells[columnIndex].innerText.trim();
+      const bText = b.cells[columnIndex].innerText.trim();
+      // detectar datas (dd/mm/yyyy)
+      const dateRegex = /^\d{2}\/\d{2}\/\d{4}$/;
+      if (dateRegex.test(aText) && dateRegex.test(bText)) {
+        const aDateParts = aText.split('/').map(Number);
+        const bDateParts = bText.split('/').map(Number);
+        const aDate = new Date(aDateParts[2], aDateParts[1] - 1, aDateParts[0]);
+        const bDate = new Date(bDateParts[2], bDateParts[1] - 1, bDateParts[0]);
+        return dir === 'asc' ? aDate - bDate : bDate - aDate;
+      }
+      // detectar números (moeda ou inteiros)
+      const aNum = parseFloat(aText.replace(/[^0-9,.-]/g, '').replace(/\./g, '').replace(',', '.'));
+      const bNum = parseFloat(bText.replace(/[^0-9,.-]/g, '').replace(/\./g, '').replace(',', '.'));
+      if (!isNaN(aNum) && !isNaN(bNum)) {
+        return dir === 'asc' ? aNum - bNum : bNum - aNum;
+      }
+      // fallback string
+      return dir === 'asc' ? aText.localeCompare(bText) : bText.localeCompare(aText);
+    });
+    sortDirections[columnIndex] = dir === 'asc' ? 'desc' : 'asc';
+    rows.forEach(row => tbody.appendChild(row));
+    // Após ordenação, não é necessário atualizar totas aqui pois os totais filtrados
+    // são calculados no backend.
+  }
+
+  // Mantém o estado de ordenação para cada coluna
+  const sortDirections = {};
+
+  // Os filtros são processados no backend via query string. Os campos de filtro são enviados
+  // através de um formulário GET. O cálculo dos totais filtrados também ocorre no backend. Apenas
+  // a funcionalidade de ordenação permanece ativa neste script.
 </script>
 {% endblock %}
