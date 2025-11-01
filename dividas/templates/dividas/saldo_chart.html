@@ -1,46 +1,169 @@
-{% extends 'base.html' %}
-{% load br_currency_filter %}
+{% load static %}
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gráfico de Projeção de Parcelas</title>
+    
+    <!-- Importações do Chart.js e Plugin Datalabels -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
+    
+    <style>
+        .chart-container {
+            /* Tamanho AUMENTADO e LIMITADO (CSS) */
+            width: 90%;
+            max-width: 1100px; 
+            max-height: 650px; 
+            height: 650px; 
 
-{% block content %}
-<div class="container mt-4">
-    <h2 class="mb-4">📊 Gráfico de Projeção de Parcelas</h2>
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            position: relative; 
+        }
+        
+        .header-bar {
+            background-color: #3b75af;
+            color: white;
+            padding: 15px; 
+            border-radius: 8px 8px 0 0;
+            margin-bottom: 20px;
+            font-size: 1.4em; 
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
 
-    {% if chart_image %}
-    <div class="card shadow-sm mb-4">
-        <div class="card-header">
+    <div class="chart-container">
+        
+        <div class="header-bar">
             Projeção Mensal do Total Valor das Parcelas
         </div>
-        <div class="card-body text-center">
-            <img src="data:image/png;base64,{{ chart_image }}" alt="Gráfico de Saldo Mensal de Parcelas" class="img-fluid">
-        </div>
+        
+        {% if chart_data_available %}
+            {{ chart_labels|json_script:"chart-labels" }}
+            {{ chart_data_values|json_script:"chart-data-values" }}
+            
+            <canvas id="graficoParcelas"></canvas>
+            
+        {% else %}
+            <p>Não há dados de parcelas para exibir no gráfico.</p>
+        {% endif %}
     </div>
 
-    {% if df_data %}
-    <h3 class="mb-3">Dados da Projeção</h3>
-    <div class="table-responsive">
-        <table class="table table-striped table-hover">
-            <thead>
-                <tr>
-                    <th>Mês de Referência</th>
-                    <th>Total Valor das Parcelas (R$)</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in df_data %}
-                <tr>
-                    <td>{{ row.Mes_Nome }}</td>
-                    <td>{{ row.Saldo_Parcelas|br_currency }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
+    {% if chart_data_available %}
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const labelsElement = document.getElementById('chart-labels');
+            const dataValuesElement = document.getElementById('chart-data-values');
+            
+            if (!labelsElement || !dataValuesElement) { return; }
+
+            const labels = JSON.parse(labelsElement.textContent);
+            const dataValues = JSON.parse(dataValuesElement.textContent);
+            
+            // Calcula o Valor Máximo uma única vez
+            const maxValue = Math.max(...dataValues);
+
+            // CORREÇÃO ESSENCIAL: Registra o plugin globalmente no Chart.js
+            Chart.register(ChartDataLabels); 
+
+            const data = {
+                labels: labels,
+                datasets: [{
+                    label: 'Total Valor das Parcelas',
+                    data: dataValues,
+                    fill: false,
+                    borderColor: '#007bff', 
+                    pointBackgroundColor: '#007bff',
+                    pointRadius: 5, 
+                    tension: 0.4 // Aumenta a suavização da linha 
+                }]
+            };
+
+            const config = {
+                type: 'line',
+                data: data,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false, 
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Projeção Mensal do Total Valor das Parcelas',
+                            font: { size: 22 }
+                        },
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) { label += ': '; }
+                                    // CORREÇÃO: Usa context.raw para o valor original, que é garantido ser numérico
+                                    if (context.raw !== null && context.raw !== undefined) {
+                                        label += new Intl.NumberFormat('pt-BR', { 
+                                            style: 'currency', 
+                                            currency: 'BRL' 
+                                        }).format(context.raw);
+                                    }
+                                    return label;
+                                }
+                            }
+                        },
+                        
+                        // Configuração do plugin Datalabels
+                        datalabels: {
+                            align: 'top', 
+                            color: '#333333', 
+                            formatter: function(value, context) {
+                                // Formata o valor com R$ (sem centavos)
+                                return new Intl.NumberFormat('pt-BR', { 
+                                    style: 'currency', 
+                                    currency: 'BRL',
+                                    maximumFractionDigits: 0
+                                }).format(value);
+                            },
+                            font: { size: 12, weight: 'bold' },
+                            
+                            // CORREÇÃO: Exibe todos os rótulos (display: true)
+                            display: true, // Exibe todos os rótulos
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: { display: true, text: 'Mês de Referência', font: { size: 16 } },
+                            ticks: { font: { size: 14, weight: 'bold' } } 
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: { display: true, text: 'Total Valor das Parcelas (R$)', font: { size: 16 } },
+                            ticks: {
+                                font: { size: 14 },
+                                callback: function(value, index, ticks) {
+                                    return new Intl.NumberFormat('pt-BR', { 
+                                        style: 'currency', 
+                                        currency: 'BRL',
+                                        maximumFractionDigits: 0
+                                    }).format(value);
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
+            const myChart = new Chart(
+                document.getElementById('graficoParcelas'),
+                config
+            );
+        });
+    </script>
     {% endif %}
 
-    {% else %}
-    <div class="alert alert-info" role="alert">
-        Nenhuma dívida encontrada para gerar a projeção.
-    </div>
-    {% endif %}
-</div>
-{% endblock %}
+</body>
+</html>

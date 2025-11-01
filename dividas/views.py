@@ -1,7 +1,6 @@
 # C:\projetos\tribalance_config\dividas\views.py
 
-# --- Correção do Matplotlib ---
-# Adiciona o 'Agg' backend ANTES de importar o pyplot
+# --- Correção do Matplotlib (DEVE SER O PRIMEIRO) ---
 import matplotlib
 matplotlib.use('Agg')
 
@@ -10,7 +9,8 @@ import io
 import base64
 from datetime import date
 from collections import defaultdict
-from decimal import Decimal # Importado para cálculos monetários precisos
+from decimal import Decimal 
+import math 
 
 # Imports do Django
 from django.shortcuts import render, redirect, get_object_or_404
@@ -20,7 +20,6 @@ from django.db.models import Sum
 from django.utils import timezone
 
 # Imports de Bibliotecas Externas
-import matplotlib.pyplot as plt
 import pandas as pd
 from unidecode import unidecode
 
@@ -31,12 +30,11 @@ from .services import gerar_parcelas
 from .importer import importar_dividas_de_excel
 
 
-# --- Funções Auxiliares ---
+# --- Funções Auxiliares (Mantidas Intactas) ---
 
 def calcular_mes_referencia(data_vencimento):
     """
-    Calcula o mês de referência (mês anterior ao vencimento)
-    com base na lógica do seu divida_list.
+    Calcula o mês de referência (mês anterior ao vencimento).
     """
     venc = data_vencimento
     mes_venc = venc.month
@@ -53,24 +51,20 @@ def calcular_mes_referencia(data_vencimento):
         
     return ano_ref, mes_ref
 
-# --- View do Gráfico (Corrigida) ---
+# --- View do Gráfico (PARA CHART.JS) ---
 
 def saldo_parcelas_chart(request):
     """
-    Calcula o saldo mensal do "Total Valor das Parcelas (Filtros):"
-    e gera um gráfico de linha.
+    Calcula o saldo mensal do "Total Valor das Parcelas" e prepara os dados para o Chart.js.
     """
-    # 1. Coleta de dados: Todas as dívidas e suas parcelas
+    # 1. Coleta de dados
     dividas = Divida.objects.all().prefetch_related('parcelas')
     
-    # 2. Cálculo do Saldo Mensal
-    # *** CORREÇÃO: Inicializa com Decimal para cálculos monetários precisos ***
+    # 2. Cálculo do Saldo Mensal (usando Decimal para precisão)
     saldo_mensal = defaultdict(Decimal) 
 
     for divida in dividas:
-        # O valor da parcela é uma propriedade do modelo Divida e retorna Decimal
         valor_parcela = divida.valor_parcela 
-        
         parcelas_ordenadas = divida.parcelas.all().order_by('vencimento') 
         
         if not parcelas_ordenadas:
@@ -79,19 +73,17 @@ def saldo_parcelas_chart(request):
         primeira_parcela = parcelas_ordenadas.first()
         ultima_parcela = parcelas_ordenadas.last()
 
-        # Mês de referência da primeira parcela
+        # O mês de referência é o mês anterior ao vencimento.
+        # Para a primeira parcela, o mês de referência é o mês anterior ao seu vencimento.
+        # Para a última parcela, o mês de referência é o mês anterior ao seu vencimento.
         ano_ref_ini, mes_ref_ini = calcular_mes_referencia(primeira_parcela.vencimento)
-        
-        # Mês de referência da última parcela
         ano_ref_fim, mes_ref_fim = calcular_mes_referencia(ultima_parcela.vencimento)
 
-        # Itera sobre os meses de referência (do primeiro ao último)
         current_year = ano_ref_ini
         current_month = mes_ref_ini
         
         while True:
             key = f"{current_year}-{current_month:02d}"
-            # *** CORREÇÃO: A soma agora é entre Decimal e Decimal ***
             saldo_mensal[key] += valor_parcela
             
             if current_year == ano_ref_fim and current_month == mes_ref_fim:
@@ -103,71 +95,51 @@ def saldo_parcelas_chart(request):
             else:
                 current_month += 1
                 
-            if current_year > ano_ref_fim + 1: # Prevenção de loop
+            # Limite de segurança para evitar loops infinitos em caso de dados inconsistentes
+            if current_year > ano_ref_fim + 50:
                 break
 
-    # 3. Preparação dos dados para o gráfico
-    # Converte os valores Decimal para float APENAS para o Matplotlib/Pandas
-    data_for_df = {k: float(v) for k, v in saldo_mensal.items()}
-    
-    df = pd.DataFrame(data_for_df.items(), columns=['Mes_Referencia', 'Saldo_Parcelas'])
-    if df.empty:
-        return render(request, 'dividas/saldo_chart.html', {'chart_image': None})
 
-    df['Mes_Referencia'] = pd.to_datetime(df['Mes_Referencia'], format='%Y-%m')
-    df = df.sort_values('Mes_Referencia').reset_index(drop=True)
-    df['Mes_Nome'] = df['Mes_Referencia'].dt.strftime('%b/%Y')
-    
-    # 4. Geração do Gráfico (Agora seguro, usando backend 'Agg')
-    plt.figure(figsize=(12, 6))
-    plt.plot(df['Mes_Nome'], df['Saldo_Parcelas'], marker='o', linestyle='-', color='#007bff')
-    
-    plt.title('Projeção Mensal do Total Valor das Parcelas', fontsize=16)
-    plt.xlabel('Mês de Referência', fontsize=12)
-    plt.ylabel('Total Valor das Parcelas (R$)', fontsize=12)
-    
-    plt.xticks(rotation=45, ha='right')
-    plt.grid(True, linestyle='--', alpha=0.7)
-    plt.tight_layout()
+    # 3. Preparação dos dados para o Chart.js
+    if not saldo_mensal:
+        return render(request, 'dividas/saldo_chart.html', {'chart_data_available': False})
 
-    # 5. Salvar o gráfico em memória e codificar para base64
-    buffer = io.BytesIO()
-    plt.savefig(buffer, format='png')
-    buffer.seek(0)
-    chart_image = base64.b64encode(buffer.read()).decode('utf-8')
-    plt.close()
-
-    # 6. Renderizar o template com a imagem do gráfico
-    # Usamos o 'saldo_mensal' original (com Decimals) para os dados da tabela
-    df_data_decimal = pd.DataFrame(saldo_mensal.items(), columns=['Mes_Referencia', 'Saldo_Parcelas'])
-    df_data_decimal['Mes_Referencia'] = pd.to_datetime(df_data_decimal['Mes_Referencia'], format='%Y-%m')
-    df_data_decimal = df_data_decimal.sort_values('Mes_Referencia').reset_index(drop=True)
-    df_data_decimal['Mes_Nome'] = df_data_decimal['Mes_Referencia'].dt.strftime('%b/%Y')
+    # Converter para DataFrame para ordenação e formatação fácil
+    df = pd.DataFrame(saldo_mensal.items(), columns=['Mes_Referencia_Key', 'Saldo_Parcelas'])
+    df['Mes_Referencia_Key'] = pd.to_datetime(df['Mes_Referencia_Key'], format='%Y-%m')
+    df = df.sort_values('Mes_Referencia_Key').reset_index(drop=True)
     
+    # Formato de rótulo: Jan/2025
+    df['Mes_Nome'] = df['Mes_Referencia_Key'].dt.strftime('%b/%Y').str.replace(r'(\w+)/', lambda x: x.group(1).capitalize() + '/', regex=True)
+    
+    # Extrair listas finais
+    chart_labels = df['Mes_Nome'].tolist()
+    
+    # CORREÇÃO: Converte diretamente de Decimal para float. O .tolist() do pandas já deve fazer isso,
+    # mas garantimos que a lista final é de floats, não strings, para evitar problemas no JS.
+    chart_data_values = [float(s) for s in df['Saldo_Parcelas'].tolist()]
+
+
+    # 4. Renderizar o template com os dados Chart.js
     context = {
-        'chart_image': chart_image,
-        'df_data': df_data_decimal.to_dict('records')
+        'chart_data_available': True,
+        'chart_labels': chart_labels,
+        'chart_data_values': chart_data_values
     }
+    
     return render(request, 'dividas/saldo_chart.html', context)
 
-
-# --- Outras Views ---
+# --- Outras Views (Mantenha o restante do arquivo views.py como estava) ---
 
 def divida_list(request):
-    """
-    Lista e filtra dívidas parceladas.
-    [...]
-    """
-    # Carrega todas as dívidas ordenadas pela data de compra (mais recente primeiro)
+# ... (conteúdo da divida_list) ...
     dividas = Divida.objects.all().order_by('-data_compra')
 
-    # Mapeia números para nomes de mês em português
     meses_pt = {
         1: 'Janeiro', 2: 'Fevereiro', 3: 'Março', 4: 'Abril', 5: 'Maio', 6: 'Junho',
         7: 'Julho', 8: 'Agosto', 9: 'Setembro', 10: 'Outubro', 11: 'Novembro', 12: 'Dezembro'
     }
 
-    # Recupera parâmetros de filtro da query string
     mes_param = request.GET.get('mes', '').strip() 
     ano_param = request.GET.get('ano', '').strip() 
     tipo_param = request.GET.get('tipo', '').strip()
@@ -179,7 +151,6 @@ def divida_list(request):
     
     if valor_parcela_param:
         try:
-            # Converte para Decimal para comparação correta
             valor_num = Decimal(valor_parcela_param.replace('.', '').replace(',', '.'))
             dividas = dividas.filter(valor_parcela__gte=valor_num)
         except (ValueError, TypeError):
@@ -188,21 +159,18 @@ def divida_list(request):
     filtered_list = []
     
     for d in list(dividas):
-        """
-        Aplica filtros de texto e calcula dinamicamente o mês [...]
-        """
 
         # Filtros de texto: Descrição (contém)
         if descricao_param:
             if unidecode(d.descricao).lower().find(unidecode(descricao_param).lower()) == -1:
                 continue
 
-        # Filtro por tipo de despesa (igualdade exata após normalização)
+        # Filtro por tipo de despesa
         if tipo_param:
             if not d.tipo_despesa or unidecode(d.tipo_despesa).lower() != unidecode(tipo_param).lower():
                 continue
 
-        # Filtro por forma de pagamento (substring)
+        # Filtro por forma de pagamento
         if forma_param:
             if unidecode(d.forma_pagamento).lower().find(unidecode(forma_param).lower()) == -1:
                 continue
@@ -211,15 +179,13 @@ def divida_list(request):
         primeira_parcela = d.parcelas.order_by('numero').first()
         data_ref = primeira_parcela.vencimento if primeira_parcela and primeira_parcela.vencimento else d.data_compra
         
-        # Usa a função auxiliar
         ano_venc, mes_ref = calcular_mes_referencia(data_ref)
         mes_nome = meses_pt.get(mes_ref, '')
 
-        # Atribui atributos dinâmicos para uso no template
         d.mes_nome = mes_nome
         d.ano_venc = ano_venc
 
-        # Filtro de mês (comparação acento-insensível)
+        # Filtro de mês
         if mes_param:
             if unidecode(mes_nome).lower() != unidecode(mes_param).lower():
                 continue
@@ -233,19 +199,17 @@ def divida_list(request):
             except ValueError:
                 pass
 
-        # Filtro de status (Em aberto ou Quitada)
+        # Filtro de status
         if status_param:
-            current_status = d.status  # usa propriedade ``status`` do modelo
+            current_status = d.status
             if unidecode(status_param).lower() != unidecode(current_status).lower():
                 continue
 
-        # Se passou por todos os filtros, adiciona à lista
         filtered_list.append(d)
 
-    # Calcula totais das dívidas em aberto (ciclo atual) em todo o conjunto de dívidas
+    # Calcula totais das dívidas em aberto (ciclo atual)
     all_dividas = Divida.objects.all()
     
-    # *** CORREÇÃO: Use Decimal para totais monetários ***
     open_total_valor = Decimal('0.0')
     open_total_parcela = Decimal('0.0')
     
@@ -255,8 +219,7 @@ def divida_list(request):
             open_total_valor += d.valor_total
             open_total_parcela += d.valor_parcela
 
-    # Calcula totais das dívidas filtradas (independente de estar em aberto ou não)
-    # *** CORREÇÃO: Use Decimal para totais monetários ***
+    # Calcula totais das dívidas filtradas
     filtered_total_valor = sum(d.valor_total for d in filtered_list)
     filtered_total_parcela = sum(d.valor_parcela for d in filtered_list)
 
@@ -265,13 +228,12 @@ def divida_list(request):
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
 
-    # Lista de anos e tipos de despesa disponíveis para dropdowns
+    # Lista de anos e tipos de despesa disponíveis
     anos_set = set()
     for p in all_dividas:
         primeira = p.parcelas.order_by('numero').first()
         ref_date = primeira.vencimento if primeira and primeira.vencimento else p.data_compra
         
-        # Usa a função auxiliar
         ano_ref, _ = calcular_mes_referencia(ref_date)
         anos_set.add(ano_ref)
         
@@ -319,7 +281,6 @@ def divida_create(request):
                     7: 'Julho', 8: 'Agosto', 9: 'Setembro', 10: 'Outubro', 11: 'Novembro', 12: 'Dezembro'
                 }
                 
-                # Usa a função auxiliar
                 ano_ref, mes_ref = calcular_mes_referencia(venc)
                 
                 divida.mes = meses_pt.get(mes_ref, '')
@@ -357,5 +318,3 @@ def importar_excel_view(request):
             messages.success(request, f"{len(dividas)} dívidas importadas com sucesso!")
             return redirect('dividas:divida_list')
     return render(request, 'dividas/importar_excel.html')
-
-# (A segunda definição de 'saldo_parcelas_chart' foi removida pois era duplicada)
