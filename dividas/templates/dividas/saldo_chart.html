@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% load br_currency_filter %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="mb-4">📊 Gráfico de Projeção de Parcelas</h2>
+
+    {% if chart_image %}
+    <div class="card shadow-sm mb-4">
+        <div class="card-header">
+            Projeção Mensal do Total Valor das Parcelas
+        </div>
+        <div class="card-body text-center">
+            <img src="data:image/png;base64,{{ chart_image }}" alt="Gráfico de Saldo Mensal de Parcelas" class="img-fluid">
+        </div>
+    </div>
+
+    {% if df_data %}
+    <h3 class="mb-3">Dados da Projeção</h3>
+    <div class="table-responsive">
+        <table class="table table-striped table-hover">
+            <thead>
+                <tr>
+                    <th>Mês de Referência</th>
+                    <th>Total Valor das Parcelas (R$)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in df_data %}
+                <tr>
+                    <td>{{ row.Mes_Nome }}</td>
+                    <td>{{ row.Saldo_Parcelas|br_currency }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="alert alert-info" role="alert">
+        Nenhuma dívida encontrada para gerar a projeção.
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
