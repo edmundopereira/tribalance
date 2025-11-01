@@ -5,52 +5,77 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gráfico de Projeção de Parcelas</title>
-    
+
     <!-- Importações do Chart.js e Plugin Datalabels -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
-    
-    <style>
-        .chart-container {
-            /* Tamanho AUMENTADO e LIMITADO (CSS) */
-            width: 90%;
-            max-width: 1100px; 
-            max-height: 650px; 
-            height: 650px; 
 
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f7fb;
+            margin: 0;
+            padding: 0;
+        }
+
+        .chart-container {
+            width: 90%;
+            max-width: 3000px;
+            max-height: 3000px;
+            height: 650px;
             margin: 20px auto;
             padding: 20px;
             background-color: #ffffff;
             border-radius: 8px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-            position: relative; 
+            position: relative;
         }
-        
+
         .header-bar {
             background-color: #3b75af;
             color: white;
-            padding: 15px; 
+            padding: 15px;
             border-radius: 8px 8px 0 0;
             margin-bottom: 20px;
-            font-size: 1.4em; 
+            font-size: 1.4em;
             text-align: center;
+            position: relative;
+        }
+
+        /* Botão Voltar */
+        .btn-voltar {
+            position: absolute;
+            left: 15px;
+            top: 12px;
+            background-color: #ffffff;
+            color: #3b75af;
+            border: 2px solid #3b75af;
+            border-radius: 6px;
+            padding: 8px 16px;
+            font-weight: bold;
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+
+        .btn-voltar:hover {
+            background-color: #3b75af;
+            color: #ffffff;
         }
     </style>
 </head>
 <body>
 
     <div class="chart-container">
-        
         <div class="header-bar">
+            <a href="http://127.0.0.1:8000/dividas/" class="btn-voltar">← Voltar</a>
             Projeção Mensal do Total Valor das Parcelas
         </div>
-        
+
         {% if chart_data_available %}
             {{ chart_labels|json_script:"chart-labels" }}
             {{ chart_data_values|json_script:"chart-data-values" }}
-            
+
             <canvas id="graficoParcelas"></canvas>
-            
         {% else %}
             <p>Não há dados de parcelas para exibir no gráfico.</p>
         {% endif %}
@@ -61,17 +86,12 @@
         document.addEventListener('DOMContentLoaded', function() {
             const labelsElement = document.getElementById('chart-labels');
             const dataValuesElement = document.getElementById('chart-data-values');
-            
-            if (!labelsElement || !dataValuesElement) { return; }
+            if (!labelsElement || !dataValuesElement) return;
 
             const labels = JSON.parse(labelsElement.textContent);
             const dataValues = JSON.parse(dataValuesElement.textContent);
-            
-            // Calcula o Valor Máximo uma única vez
-            const maxValue = Math.max(...dataValues);
 
-            // CORREÇÃO ESSENCIAL: Registra o plugin globalmente no Chart.js
-            Chart.register(ChartDataLabels); 
+            Chart.register(ChartDataLabels);
 
             const data = {
                 labels: labels,
@@ -79,10 +99,10 @@
                     label: 'Total Valor das Parcelas',
                     data: dataValues,
                     fill: false,
-                    borderColor: '#007bff', 
+                    borderColor: '#007bff',
                     pointBackgroundColor: '#007bff',
-                    pointRadius: 5, 
-                    tension: 0.4 // Aumenta a suavização da linha 
+                    pointRadius: 5,
+                    tension: 0.4
                 }]
             };
 
@@ -91,7 +111,7 @@
                 data: data,
                 options: {
                     responsive: true,
-                    maintainAspectRatio: false, 
+                    maintainAspectRatio: false,
                     plugins: {
                         title: {
                             display: true,
@@ -103,50 +123,44 @@
                             callbacks: {
                                 label: function(context) {
                                     let label = context.dataset.label || '';
-                                    if (label) { label += ': '; }
-                                    // CORREÇÃO: Usa context.raw para o valor original, que é garantido ser numérico
+                                    if (label) label += ': ';
                                     if (context.raw !== null && context.raw !== undefined) {
-                                        label += new Intl.NumberFormat('pt-BR', { 
-                                            style: 'currency', 
-                                            currency: 'BRL' 
+                                        label += new Intl.NumberFormat('pt-BR', {
+                                            style: 'currency',
+                                            currency: 'BRL'
                                         }).format(context.raw);
                                     }
                                     return label;
                                 }
                             }
                         },
-                        
-                        // Configuração do plugin Datalabels
                         datalabels: {
-                            align: 'top', 
-                            color: '#333333', 
-                            formatter: function(value, context) {
-                                // Formata o valor com R$ (sem centavos)
-                                return new Intl.NumberFormat('pt-BR', { 
-                                    style: 'currency', 
+                            align: 'top',
+                            color: '#333333',
+                            formatter: function(value) {
+                                return new Intl.NumberFormat('pt-BR', {
+                                    style: 'currency',
                                     currency: 'BRL',
                                     maximumFractionDigits: 0
                                 }).format(value);
                             },
                             font: { size: 12, weight: 'bold' },
-                            
-                            // CORREÇÃO: Exibe todos os rótulos (display: true)
-                            display: true, // Exibe todos os rótulos
+                            display: true
                         }
                     },
                     scales: {
                         x: {
                             title: { display: true, text: 'Mês de Referência', font: { size: 16 } },
-                            ticks: { font: { size: 14, weight: 'bold' } } 
+                            ticks: { font: { size: 14, weight: 'bold' } }
                         },
                         y: {
                             beginAtZero: true,
                             title: { display: true, text: 'Total Valor das Parcelas (R$)', font: { size: 16 } },
                             ticks: {
                                 font: { size: 14 },
-                                callback: function(value, index, ticks) {
-                                    return new Intl.NumberFormat('pt-BR', { 
-                                        style: 'currency', 
+                                callback: function(value) {
+                                    return new Intl.NumberFormat('pt-BR', {
+                                        style: 'currency',
                                         currency: 'BRL',
                                         maximumFractionDigits: 0
                                     }).format(value);
@@ -157,13 +171,9 @@
                 }
             };
 
-            const myChart = new Chart(
-                document.getElementById('graficoParcelas'),
-                config
-            );
+            new Chart(document.getElementById('graficoParcelas'), config);
         });
     </script>
     {% endif %}
-
 </body>
 </html>
