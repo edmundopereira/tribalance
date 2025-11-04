@@ -36,15 +36,19 @@ def processar_arquivo_importacao(arquivo ):
     }
     
     try:
-        # Determinar tipo de arquivo
+
+        # Força leitura completa da planilha, mesmo que o Excel tenha filtros ou intervalos nomeados
         if arquivo.name.endswith('.csv'):
-            df = pd.read_csv(arquivo)
+            df = pd.read_csv(arquivo, encoding='utf-8', sep=None, engine='python')
         elif arquivo.name.endswith(('.xlsx', '.xls')):
-            df = pd.read_excel(arquivo)
+            excel = pd.ExcelFile(arquivo)
+            df = excel.parse(excel.sheet_names[0], header=0)
         else:
             resultado['status'] = 'ERRO'
             resultado['mensagem'] = 'Formato de arquivo não suportado. Use .csv ou .xlsx'
             return resultado
+
+        
         
         # Validar colunas obrigatórias
         colunas_obrigatorias = ['data', 'lancamento', 'categoria', 'tipo', 'valor', 'fonte', 'conta_final']
@@ -147,9 +151,13 @@ def processar_arquivo_importacao(arquivo ):
     except Exception as e:
         resultado['status'] = 'ERRO'
         resultado['mensagem'] = f'Erro fatal ao processar arquivo: {str(e)}'
-    
-    return resultado
 
+    # 🧠 Log para diagnóstico (exibe no terminal do runserver)
+    print(f"Total lido: {resultado['total']} | Importados: {resultado['importados']} | Rejeitados: {resultado['rejeitados']}")
+
+    return resultado    
+    
+    
 def classificar_lancamento(categoria):
     """
     Classifica um lançamento em um dos pilares do TriBalance.
@@ -210,15 +218,19 @@ def calcular_kpis(lancamentos):
     from django.db.models import Sum
     
     # Receita total
+    # Receita é a soma de todos os valores positivos (valor > 0)
     receita_total = lancamentos.filter(
-        tipo__in=['RECEITA', 'CRÉDITO']
+        valor__gt=0
     ).aggregate(total=Sum('valor'))['total'] or Decimal('0.00')
     
     # Despesa total
-    despesa_total = lancamentos.filter(
-        tipo__in=['DESPESA', 'DÉBITO']
+    # Despesa é a soma de todos os valores negativos (valor < 0).
+    # Usamos abs() para o KPI, pois o valor deve ser positivo no dashboard.
+    despesa_total_query = lancamentos.filter(
+        valor__lt=0
     ).aggregate(total=Sum('valor'))['total'] or Decimal('0.00')
-    despesa_total = abs(despesa_total)
+    
+    despesa_total = abs(despesa_total_query)
     
     # Saldo
     saldo = receita_total - despesa_total
@@ -357,4 +369,3 @@ def exportar_excel(lancamentos, nome_arquivo='lancamentos'):
     
     wb.save(response)
     return response
-

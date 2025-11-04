@@ -30,6 +30,8 @@ from .services import gerar_parcelas
 from .importer import importar_dividas_de_excel
 
 
+
+
 # --- Funções Auxiliares (Mantidas Intactas) ---
 
 def calcular_mes_referencia(data_vencimento):
@@ -53,81 +55,106 @@ def calcular_mes_referencia(data_vencimento):
 
 # --- View do Gráfico (PARA CHART.JS) ---
 
+from django.db.models import Q
+
 def saldo_parcelas_chart(request):
     """
-    Calcula o saldo mensal do "Total Valor das Parcelas" e prepara os dados para o Chart.js.
+    Gera o saldo mensal do Total Valor das Parcelas (Filtros) para exibição no Chart.js.
+    Reflete exatamente o total calculado na tela principal (divida_list).
     """
-    # 1. Coleta de dados
-    dividas = Divida.objects.all().prefetch_related('parcelas')
-    
-    # 2. Cálculo do Saldo Mensal (usando Decimal para precisão)
-    saldo_mensal = defaultdict(Decimal) 
+
+    # --- 1. Coleta das dívidas e parâmetros de filtro vindos da querystring ---
+    dividas = Divida.objects.prefetch_related('parcelas').all()
+
+    mes_param = request.GET.get('mes', '').strip()
+    ano_param = request.GET.get('ano', '').strip()
+    tipo_param = request.GET.get('tipo', '').strip()
+    status_param = request.GET.get('status', '').strip()
+    descricao_param = request.GET.get('descricao', '').strip()
+    forma_param = request.GET.get('forma', '').strip()
+    valor_parcela_param = request.GET.get('valor_parcela', '').strip()
+
+    # --- 2. Filtros aplicados exatamente como em divida_list ---
+    if descricao_param:
+        dividas = [d for d in dividas if unidecode(descricao_param).lower() in unidecode(d.descricao).lower()]
+
+    if tipo_param:
+        dividas = [d for d in dividas if d.tipo_despesa and unidecode(tipo_param).lower() == unidecode(d.tipo_despesa).lower()]
+
+    if forma_param:
+        dividas = [d for d in dividas if unidecode(forma_param).lower() in unidecode(d.forma_pagamento).lower()]
+
+    if valor_parcela_param:
+        try:
+            valor_num = Decimal(valor_parcela_param.replace('.', '').replace(',', '.'))
+            dividas = [d for d in dividas if d.valor_parcela >= valor_num]
+        except Exception:
+            pass
+
+    if status_param:
+        dividas = [d for d in dividas if unidecode(d.status).lower() == unidecode(status_param).lower()]
+
+    # --- 3. Monta o dicionário com total por mês de vencimento das parcelas ---
+    saldo_mensal = defaultdict(Decimal)
 
     for divida in dividas:
-        valor_parcela = divida.valor_parcela 
-        parcelas_ordenadas = divida.parcelas.all().order_by('vencimento') 
-        
-        if not parcelas_ordenadas:
-            continue
+        parcelas = divida.parcelas.all()
+        for p in parcelas:
+            if not p.vencimento:
+                continue
 
-        primeira_parcela = parcelas_ordenadas.first()
-        ultima_parcela = parcelas_ordenadas.last()
+            mes = p.vencimento.month
+            ano = p.vencimento.year
 
-        # O mês de referência é o mês anterior ao vencimento.
-        # Para a primeira parcela, o mês de referência é o mês anterior ao seu vencimento.
-        # Para a última parcela, o mês de referência é o mês anterior ao seu vencimento.
-        ano_ref_ini, mes_ref_ini = calcular_mes_referencia(primeira_parcela.vencimento)
-        ano_ref_fim, mes_ref_fim = calcular_mes_referencia(ultima_parcela.vencimento)
+            # Aplica os filtros de mês e ano (se existirem)
+            if mes_param:
+                meses_pt = {
+                    'Janeiro': 1, 'Fevereiro': 2, 'Março': 3, 'Abril': 4,
+                    'Maio': 5, 'Junho': 6, 'Julho': 7, 'Agosto': 8,
+                    'Setembro': 9, 'Outubro': 10, 'Novembro': 11, 'Dezembro': 12
+                }
+                mes_int = meses_pt.get(mes_param.capitalize())
+                if mes_int and mes != mes_int:
+                    continue
 
-        current_year = ano_ref_ini
-        current_month = mes_ref_ini
-        
-        while True:
-            key = f"{current_year}-{current_month:02d}"
-            saldo_mensal[key] += valor_parcela
-            
-            if current_year == ano_ref_fim and current_month == mes_ref_fim:
-                break
-            
-            if current_month == 12:
-                current_month = 1
-                current_year += 1
-            else:
-                current_month += 1
-                
-            # Limite de segurança para evitar loops infinitos em caso de dados inconsistentes
-            if current_year > ano_ref_fim + 50:
-                break
+            if ano_param:
+                try:
+                    ano_int = int(ano_param)
+                    if ano != ano_int:
+                        continue
+                except ValueError:
+                    pass
 
+            key = f"{ano}-{mes:02d}"
+            saldo_mensal[key] += Decimal(p.valor)
 
-    # 3. Preparação dos dados para o Chart.js
     if not saldo_mensal:
         return render(request, 'dividas/saldo_chart.html', {'chart_data_available': False})
 
-    # Converter para DataFrame para ordenação e formatação fácil
+    # --- 4. Criação do DataFrame para ordenar e formatar ---
     df = pd.DataFrame(saldo_mensal.items(), columns=['Mes_Referencia_Key', 'Saldo_Parcelas'])
     df['Mes_Referencia_Key'] = pd.to_datetime(df['Mes_Referencia_Key'], format='%Y-%m')
     df = df.sort_values('Mes_Referencia_Key').reset_index(drop=True)
-    
-    # Formato de rótulo: Jan/2025
-    df['Mes_Nome'] = df['Mes_Referencia_Key'].dt.strftime('%b/%Y').str.replace(r'(\w+)/', lambda x: x.group(1).capitalize() + '/', regex=True)
-    
-    # Extrair listas finais
+
+    df['Mes_Nome'] = df['Mes_Referencia_Key'].dt.strftime('%b/%Y')
+    df['Mes_Nome'] = df['Mes_Nome'].str.replace('.', '', regex=False)  # Remove pontos do mês
+    df['Mes_Nome'] = df['Mes_Nome'].apply(lambda x: x.capitalize())
+
     chart_labels = df['Mes_Nome'].tolist()
-    
-    # CORREÇÃO: Converte diretamente de Decimal para float. O .tolist() do pandas já deve fazer isso,
-    # mas garantimos que a lista final é de floats, não strings, para evitar problemas no JS.
-    chart_data_values = [float(s) for s in df['Saldo_Parcelas'].tolist()]
+    chart_data_values = [float(v) for v in df['Saldo_Parcelas'].tolist()]
 
+    total_grafico = sum(chart_data_values)
 
-    # 4. Renderizar o template com os dados Chart.js
+    # --- 5. Contexto enviado ao template ---
     context = {
         'chart_data_available': True,
         'chart_labels': chart_labels,
-        'chart_data_values': chart_data_values
+        'chart_data_values': chart_data_values,
+        'total_grafico': total_grafico,
     }
-    
+
     return render(request, 'dividas/saldo_chart.html', context)
+
 
 # --- Outras Views (Mantenha o restante do arquivo views.py como estava) ---
 

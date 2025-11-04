@@ -142,10 +142,10 @@ def dashboard(request):
     
     return render(request, 'financeiro/dashboard.html', context)
 
-
 def importacao(request):
     """
     View para upload de arquivo de importação.
+    Antes de importar, limpa toda a base de lançamentos.
     """
     if request.method == 'POST':
         arquivo = request.FILES.get('arquivo')
@@ -155,10 +155,20 @@ def importacao(request):
             return redirect('financeiro:importacao')
         
         try:
+            # ⚠️ LIMPA TODA A BASE DE DADOS ANTES DA IMPORTAÇÃO
+            total_anteriores = Lancamento.objects.count()
+            Lancamento.objects.all().delete()
+            
+            messages.warning(
+                request,
+                f'Base de dados limpa com sucesso! {total_anteriores} lançamentos removidos antes da nova importação.'
+            )
+
+            # Processa o novo arquivo normalmente
             resultado = processar_arquivo_importacao(arquivo)
             
-            # Registrar no log
-            log = ImportacaoLog.objects.create(
+            # Registrar log da importação
+            ImportacaoLog.objects.create(
                 arquivo=arquivo,
                 status=resultado['status'],
                 total_registros=resultado['total'],
@@ -180,7 +190,7 @@ def importacao(request):
             messages.error(request, f'Erro ao processar arquivo: {str(e)}')
             return redirect('financeiro:importacao')
     
-    # GET - exibir formulário
+    # GET - Exibir formulário e logs recentes
     logs_recentes = ImportacaoLog.objects.all()[:5]
     
     context = {
@@ -188,6 +198,7 @@ def importacao(request):
     }
     
     return render(request, 'financeiro/importacao.html', context)
+
 
 
 def lista_lancamentos(request):
@@ -205,21 +216,26 @@ def lista_lancamentos(request):
     data_fim = request.GET.get('data_fim')
     mes = request.GET.get('mes')
 
-    # Se nenhum filtro de data ou mês for fornecido, filtra para o mês atual por padrão.
-    if not data_inicio and not data_fim and not mes:
-        hoje = timezone.now().date()
-        lancamentos = lancamentos.filter(data__year=hoje.year, data__month=hoje.month)
-    else:
-        # Aplica os filtros de data/mês fornecidos
-        if data_inicio:
-            lancamentos = lancamentos.filter(data__gte=data_inicio)
-            filtros_aplicados['data_inicio'] = data_inicio
-        if data_fim:
-            lancamentos = lancamentos.filter(data__lte=data_fim)
-            filtros_aplicados['data_fim'] = data_fim
-        if mes:
-            lancamentos = lancamentos.filter(mes=mes)
-            filtros_aplicados['mes'] = mes
+    # Lógica de filtragem de data/mês corrigida
+    # O filtro 'mes' vazio significa 'Todos os meses', não deve aplicar filtro padrão.
+    
+    # Aplica os filtros de data/mês fornecidos
+    if data_inicio:
+        lancamentos = lancamentos.filter(data__gte=data_inicio)
+        filtros_aplicados['data_inicio'] = data_inicio
+    if data_fim:
+        lancamentos = lancamentos.filter(data__lte=data_fim)
+        filtros_aplicados['data_fim'] = data_fim
+    
+    # Se o filtro 'mes' for fornecido (e não for vazio), aplica-o.
+    if mes:
+        lancamentos = lancamentos.filter(mes=mes)
+        filtros_aplicados['mes'] = mes
+    
+    # Se nenhum filtro de data ou mês foi aplicado, filtra para o mês atual por padrão.
+    #if not data_inicio and not data_fim and not mes:
+     #   hoje = timezone.now().date()
+      #  lancamentos = lancamentos.filter(data__year=hoje.year, data__month=hoje.month)
     
     # Filtro por tipo
     tipo = request.GET.get('tipo')
@@ -276,7 +292,8 @@ def lista_lancamentos(request):
     paginator = Paginator(lancamentos, 25)  # 25 registros por página
     page_number = request.GET.get('page', 1)
     page_obj = paginator.get_page(page_number)
-      # Opções para filtros (Corrigindo repetição e garantindo ordem)
+    
+    # Opções para filtros (Corrigindo repetição e garantindo ordem)
     meses = Lancamento.MES_CHOICES
     tipos = Lancamento.TIPO_CHOICES
     pilares = Lancamento.PILAR_CHOICES   
@@ -297,12 +314,12 @@ def lista_lancamentos(request):
         'page_obj': page_obj,
         'paginator': paginator,
         'total_registros': total_registros,
-        'soma_valores': soma_valores_formatada, # Passa o valor formatado
+        'soma_valores': soma_valores_formatada, # CORREÇÃO: Passando a variável formatada
         'filtros_aplicados': filtros_aplicados,
         'meses': meses,
-        'tipos': tipos,
-        'pilares': pilares,
+        'tipos': Lancamento.TIPO_CHOICES,
         'categorias': categorias,
+        'pilares': Lancamento.PILAR_CHOICES,
         'fontes': fontes,
         'contas_finais': contas_finais,
         'ordem': ordem,

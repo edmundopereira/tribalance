@@ -187,8 +187,8 @@
             </table>
         </div>
         
-        <!-- Paginação -->
-        {% if paginator.num_pages > 1 %}
+	        <!-- Paginação -->
+	        {% if page_obj.paginator.num_pages > 1 %}
         <nav aria-label="Paginação">
             <ul class="pagination justify-content-center">
                 {% if page_obj.has_previous %}
